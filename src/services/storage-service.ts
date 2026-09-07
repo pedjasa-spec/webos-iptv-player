@@ -97,6 +97,7 @@ function customizationRecords(data: ChannelCustomization): UserDataRecord[] {
       order: data.order,
       groupOrder: data.groupOrder,
       customGroups: data.customGroups,
+      favoriteGroups: data.favoriteGroups,
     }),
   ];
   for (const key of Object.keys(data.overrides)) {
@@ -297,6 +298,7 @@ async function loadUserDataState(): Promise<UserDataState> {
   if (customMeta) {
     data.channelCustomization = {
       ...customMeta,
+      favoriteGroups: customMeta.favoriteGroups ?? [],
       overrides: {},
       groupOverrides: {},
     };
@@ -587,7 +589,9 @@ export const StorageService = {
       ? cloneValue(userData.channelCustomization)
       : get<ChannelCustomization | null>('channel_custom', null);
     if (!data || data.version !== CONFIG.CHANNEL_CUSTOMIZATION_VERSION) return null;
-    return data;
+    // A record written before favoriteGroups existed lacks the field; default
+    // it so every reader can rely on it always being an array.
+    return { ...data, favoriteGroups: data.favoriteGroups ?? [] };
   },
   setChannelCustomization(data: ChannelCustomization): void {
     if (!userData) {

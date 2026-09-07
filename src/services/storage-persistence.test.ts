@@ -20,14 +20,16 @@ describe('StorageService IndexedDB migration', () => {
       startMs: 1_000,
       stopMs: 2_000,
     };
-    const customization: ChannelCustomization = {
+    // Missing `favoriteGroups` on purpose: simulates a record written before
+    // that field existed, migrating from a real pre-upgrade install.
+    const customization = {
       version: 1,
       overrides: { ch1: { name: 'Bravo', hidden: true } },
       order: ['ch1'],
       groupOrder: ['Group Alpha'],
       groupOverrides: { 'Group Alpha': { name: 'Group Bravo' } },
       customGroups: ['Group Bravo'],
-    };
+    } as unknown as ChannelCustomization;
     const resume: ResumeEntry = {
       accountId: 'x1',
       kind: 'vod',
@@ -95,7 +97,7 @@ describe('StorageService IndexedDB migration', () => {
 
     expect(StorageService.getFavorites()).toEqual(['ch1']);
     expect(StorageService.getReminders()).toEqual([reminder]);
-    expect(StorageService.getChannelCustomization()).toEqual(customization);
+    expect(StorageService.getChannelCustomization()).toEqual({ ...customization, favoriteGroups: [] });
     expect(StorageService.getAudioPref('ch1')).toEqual({ name: 'Track 1', lang: 'l1' });
     expect(StorageService.getSubtitlePref('ch1')).toEqual({
       off: false,

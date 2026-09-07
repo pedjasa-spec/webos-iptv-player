@@ -788,11 +788,19 @@ describe('StorageService channel customization store', () => {
     groupOrder: ['News'],
     groupOverrides: { News: { name: 'Headlines' } },
     customGroups: ['Custom'],
+    favoriteGroups: ['Sports'],
   });
 
   it('round-trips the customization record', () => {
     StorageService.setChannelCustomization(record());
     expect(StorageService.getChannelCustomization()).toEqual(record());
+  });
+
+  it('defaults favoriteGroups on a record written before that field existed', () => {
+    const legacy = record() as Partial<ReturnType<typeof record>>;
+    delete legacy.favoriteGroups;
+    StorageService.setChannelCustomization(legacy as unknown as ChannelCustomization);
+    expect(StorageService.getChannelCustomization()?.favoriteGroups).toEqual([]);
   });
 
   it('returns null by default and after a clear', () => {

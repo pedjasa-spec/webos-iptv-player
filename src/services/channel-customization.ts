@@ -14,6 +14,7 @@ function emptyRecord(): ChannelCustomization {
     groupOrder: [],
     groupOverrides: {},
     customGroups: [],
+    favoriteGroups: [],
   };
 }
 
@@ -48,6 +49,7 @@ class ChannelCustomizationServiceImpl {
     return d.order.length > 0
       || d.groupOrder.length > 0
       || d.customGroups.length > 0
+      || d.favoriteGroups.length > 0
       || Object.keys(d.overrides).length > 0
       || Object.keys(d.groupOverrides).length > 0;
   }
@@ -182,6 +184,30 @@ class ChannelCustomizationServiceImpl {
   groupRank(groupKey: string, discoveryIndex: number): number {
     const at = this.record.groupOrder.indexOf(groupKey);
     return at >= 0 ? at : this.record.groupOrder.length + discoveryIndex;
+  }
+
+  // --- Favorite groups
+  //
+  // Independent of `groupOrder` (manual drag reorder, above): a favorited
+  // group floats to the top of the sidebar regardless of its position there.
+  // Order here is mark-order, not display position.
+
+  isGroupFavorite(groupKey: string): boolean {
+    return this.record.favoriteGroups.includes(groupKey);
+  }
+
+  get favoriteGroups(): string[] {
+    return this.record.favoriteGroups.slice();
+  }
+
+  toggleGroupFavorite(groupKey: string): boolean {
+    const favorites = this.record.favoriteGroups;
+    const at = favorites.indexOf(groupKey);
+    const favorited = at < 0;
+    if (favorited) favorites.push(groupKey);
+    else favorites.splice(at, 1);
+    this.persist();
+    return favorited;
   }
 
   // --- Reordering

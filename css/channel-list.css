@@ -157,6 +157,12 @@
   text-align: right;
 }
 
+.group-favorite-star {
+  font-size: 18px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
 /* Channel main area */
 .channel-main {
   flex: 1;

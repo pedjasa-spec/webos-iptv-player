@@ -205,6 +205,10 @@ export interface ChannelCustomization {
   groupOverrides: Record<string, GroupOverride>;
   /** User-created groups, so an empty one still lists and keeps its position. */
   customGroups: string[];
+  /** Favorited group keys, in the order the user favorited them. Independent
+   *  of `groupOrder` (manual drag reorder) — favorited groups float above the
+   *  rest regardless of where `groupOrder` would otherwise place them. */
+  favoriteGroups: string[];
 }
 
 export interface CatchupInfo {

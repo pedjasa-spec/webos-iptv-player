@@ -1,4 +1,4 @@
-import { html, type Safe } from '../utils/dom';
+import { html, raw, type Safe } from '../utils/dom';
 import { VirtualList, type VirtualListOptions } from '../utils/virtual-list';
 import { VirtualScrollGuard } from '../utils/virtual-scroll';
 
@@ -10,6 +10,40 @@ export interface SidebarEntry {
   hidden?: boolean;
   grabbed?: boolean;
   renaming?: boolean;
+  /** True for a real (non-builtin/non-pinned) row: eligible to be favorited. */
+  favoritable?: boolean;
+  /** Set by `applyFavoriteOrder`; drives the visible star marker. */
+  favorite?: boolean;
+  /** Stable identity for favorite tracking when `id` can change (e.g. a
+   *  renamed Live group); defaults to `id` when the caller has no such need. */
+  favoriteKey?: string;
+}
+
+/**
+ * Hoists favorited rows above the rest, in the order the user favorited them;
+ * non-favoritable rows (builtin/pinned entries a caller always puts first,
+ * e.g. Favorites/Recently Watched or Continue Watching/Watchlist) keep their
+ * given position, and unfavorited rows keep the server/discovery order the
+ * caller handed in. Shared so Live, Movies, and Series sort identically —
+ * each caller supplies its own persisted `favoriteIds`.
+ */
+export function applyFavoriteOrder<T extends SidebarEntry>(
+  entries: T[],
+  favoriteIds: string[],
+): T[] {
+  const rank = new Map(favoriteIds.map((id, index) => [id, index]));
+  const pinned: T[] = [];
+  const favorited: T[] = [];
+  const rest: T[] = [];
+  for (const entry of entries) {
+    if (!entry.favoritable) { pinned.push(entry); continue; }
+    const key = entry.favoriteKey ?? entry.id;
+    if (rank.has(key)) favorited.push({ ...entry, favorite: true });
+    else rest.push(entry);
+  }
+  favorited.sort((a, b) =>
+    rank.get(a.favoriteKey ?? a.id)! - rank.get(b.favoriteKey ?? b.id)!);
+  return [...pinned, ...favorited, ...rest];
 }
 
 /**
@@ -101,11 +135,14 @@ export class SidebarList {
         entry.grabbed ? 'grabbed' : ''}"
            data-key="g:${entry.id}"
            data-focusable data-group="${entry.id}" data-group-position="${position}"
+           data-favoritable="${entry.favoritable ? 'true' : ''}"
+           data-favorite-key="${entry.favoriteKey ?? entry.id}"
            style="top:${this.virtualizer.getItemOffset(position)}px">
         <span class="group-icon">${entry.icon ?? ''}</span>
         ${entry.renaming
           ? html`<input class="edit-text-input" type="text" value="${entry.label}">`
           : html`<span class="group-name">${entry.label}</span>`}
+        ${entry.favorite ? html`<span class="group-favorite-star" aria-hidden="true">${raw('&#9733;')}</span>` : ''}
         ${entry.count !== undefined ? html`<span class="group-count">${entry.count}</span>` : ''}
       </div>
     `;

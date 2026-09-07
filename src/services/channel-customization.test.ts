@@ -189,6 +189,26 @@ describe('ChannelCustomizationService', () => {
       .toEqual(['Sports', 'News', 'Music']);
   });
 
+  it('favorites groups independently of manual group order, in mark-order', () => {
+    expect(ChannelCustomizationService.isGroupFavorite('Sports')).toBe(false);
+    expect(ChannelCustomizationService.customized).toBe(false);
+
+    expect(ChannelCustomizationService.toggleGroupFavorite('Sports')).toBe(true);
+    expect(ChannelCustomizationService.toggleGroupFavorite('Music')).toBe(true);
+    expect(ChannelCustomizationService.isGroupFavorite('Sports')).toBe(true);
+    expect(ChannelCustomizationService.favoriteGroups).toEqual(['Sports', 'Music']);
+    expect(ChannelCustomizationService.customized).toBe(true);
+    expect(storageMock.setChannelCustomization).toHaveBeenCalled();
+
+    // A manual reorder that puts Music ahead of Sports doesn't touch favorite order.
+    ChannelCustomizationService.moveGroup(['Sports', 'Music', 'News'], 'Music', 'News', false);
+    expect(ChannelCustomizationService.favoriteGroups).toEqual(['Sports', 'Music']);
+
+    expect(ChannelCustomizationService.toggleGroupFavorite('Sports')).toBe(false);
+    expect(ChannelCustomizationService.isGroupFavorite('Sports')).toBe(false);
+    expect(ChannelCustomizationService.favoriteGroups).toEqual(['Music']);
+  });
+
   it('resets one channel and the whole record', () => {
     ChannelCustomizationService.rename(KEY_A, 'Alpha HD');
     ChannelCustomizationService.toggleHidden(KEY_B);

@@ -21,7 +21,8 @@ import { groupIcon } from './group-icon';
 import { showToast } from './toast';
 import { getLocale, t, tp, type SupportedLocale } from '../i18n';
 import { ChannelListEditor } from './channel-list-editor';
-import { SidebarList, type SidebarEntry } from './sidebar-list';
+import { ChannelCustomizationService } from '../services/channel-customization';
+import { SidebarList, applyFavoriteOrder, type SidebarEntry } from './sidebar-list';
 import { VirtualList } from '../utils/virtual-list';
 import { VirtualScrollGuard } from '../utils/virtual-scroll';
 
@@ -192,7 +193,12 @@ export class ChannelList {
     } else if (!showingRecent && ensureFocus && previousMain) {
       this.channelVirtualizer.setScrollOffset(previousMain.scrollTop);
     }
-    this.groupSidebar.captureScrollOffset(previousGroupList);
+    // Gated like the channel list above: moveVirtualFocus and the scroll
+    // handler both pre-set the offset themselves before calling render(false),
+    // so re-deriving it from the (not-yet-updated) DOM here would discard that
+    // advance — the exact bug that left keyboard Down stuck once a long group
+    // list scrolled past its first rendered window.
+    if (ensureFocus) this.groupSidebar.captureScrollOffset(previousGroupList);
     const viewportHeight = previousMain?.clientHeight || CHANNEL_VIEWPORT_FALLBACK;
     let wantedPosition = filteredChannels.findIndex(
       ch => `ch:${String(PlaylistService.indexOf(ch))}` === wantedKey,
@@ -207,12 +213,14 @@ export class ChannelList {
     }
     const range = this.channelVirtualizer.getRange(filteredChannels.length, viewportHeight);
     const groupViewportHeight = previousGroupList?.clientHeight || CHANNEL_VIEWPORT_FALLBACK;
-    const focusedGroupPosition = parseInt(
-      this.nav.focused?.dataset.groupPosition ?? '-1',
-      10,
-    );
-    if (ensureFocus && focusedGroupPosition >= 0) {
-      this.groupSidebar.ensureVisible(focusedGroupPosition, groupViewportHeight);
+    // Looked up by wantedKey (not the stale pre-morph dataset position) because
+    // favoriting a group can move it — the id stays put, its position doesn't.
+    const sidebarEntries = this.toSidebarEntries(groups);
+    const wantedGroupPosition = wantedKey?.indexOf('g:') === 0
+      ? this.groupSidebar.positionOf(sidebarEntries, wantedKey.slice(2))
+      : -1;
+    if (ensureFocus && wantedGroupPosition >= 0) {
+      this.groupSidebar.ensureVisible(wantedGroupPosition, groupViewportHeight);
     }
 
     morph(this.container, html`
@@ -248,7 +256,7 @@ export class ChannelList {
             </div>
           ` : ''}
           ${this.groupSidebar.render(
-            this.toSidebarEntries(groups),
+            sidebarEntries,
             this.currentGroup,
             groupViewportHeight,
           )}
@@ -391,7 +399,13 @@ export class ChannelList {
       }
 
       case 'green': {
-        this.editor.toggleFocusedFavorite();
+        const focused = this.nav.focused;
+        if (focused?.dataset.favoritable === 'true' && focused.dataset.favoriteKey !== undefined) {
+          ChannelCustomizationService.toggleGroupFavorite(focused.dataset.favoriteKey);
+          this.render();
+        } else {
+          this.editor.toggleFocusedFavorite();
+        }
         break;
       }
 
@@ -416,7 +430,7 @@ export class ChannelList {
   private toSidebarEntries(
     groups: { id: ChannelGroupId; label: string; builtin?: BuiltinChannelGroup }[],
   ): SidebarEntry[] {
-    return groups.map((g) => {
+    const entries = groups.map((g) => {
       const isSource = g.id.indexOf('source:') === 0;
       const key = isSource
         ? this.editor.groupKeyForDisplay(g.id.slice('source:'.length))
@@ -431,8 +445,11 @@ export class ChannelList {
         hidden: isSource && this.editor.isGroupHidden(key),
         grabbed: this.editor.isGroupGrabbed(key),
         renaming: this.editor.isGroupRenaming(key),
+        favoritable: isSource,
+        favoriteKey: isSource ? key : undefined,
       };
     });
+    return applyFavoriteOrder(entries, ChannelCustomizationService.favoriteGroups);
   }
 
   setPlaying(idx: number, catchupStart?: number | null): void {

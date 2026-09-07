@@ -661,6 +661,64 @@ describe('ChannelList interaction', () => {
     expect(storageMock.toggleFavorite).toHaveBeenCalledWith(channelKey(data.channels[0]));
   });
 
+  it('green favorites a focused group, marks it, and moves it to the top', () => {
+    const sports = container.querySelector<HTMLElement>('[data-group="source:Sports"]')!;
+    hover(sports);
+    list.handleAction('green');
+    expect(storageMock.toggleFavorite).not.toHaveBeenCalled();
+    expect(ChannelCustomizationService.isGroupFavorite('Sports')).toBe(true);
+
+    const groups = Array.from(container.querySelectorAll<HTMLElement>('[data-group^="source:"]'));
+    expect(groups[0].dataset.group).toBe('source:Sports');
+    expect(groups[0].querySelector('.group-favorite-star')).not.toBeNull();
+    expect(groups[1].querySelector('.group-favorite-star')).toBeNull();
+    // Still focused after the reorder — the toggle key didn't move the cursor.
+    expect(container.querySelector('.focused')?.getAttribute('data-group')).toBe('source:Sports');
+  });
+
+  it('green unfavorites a group and restores its server-order position', () => {
+    ChannelCustomizationService.toggleGroupFavorite('Sports');
+    list.render();
+    hover(container.querySelector<HTMLElement>('[data-group="source:Sports"]')!);
+    list.handleAction('green');
+    expect(ChannelCustomizationService.isGroupFavorite('Sports')).toBe(false);
+    const groups = Array.from(container.querySelectorAll<HTMLElement>('[data-group^="source:"]'));
+    expect(groups.map(g => g.dataset.group)).toEqual(['source:News', 'source:Sports']);
+  });
+
+  it('keeps focus on a group favorited far outside the rendered window', () => {
+    const original = playlistMock.getGroupsForPlaylist;
+    playlistMock.getGroupsForPlaylist = () =>
+      Array.from({ length: 200 }, (_, index) => `Group ${String(index)}`);
+    playlistMock.groupsRevision++;
+    try {
+      list.render();
+      // jsdom has no real layout, so a plain assignment to .group-list's native
+      // scrollTop clamps to 0 (zero scrollHeight); make it a plain writable
+      // number so repeated ensureVisible-driven navigation actually advances.
+      Object.defineProperty(
+        container.querySelector<HTMLElement>('.group-list')!,
+        'scrollTop',
+        { value: 0, writable: true, configurable: true },
+      );
+      hover(container.querySelector<HTMLElement>('[data-group="source:Group 0"]')!);
+      // Walk to the last group via real down-navigation (exercises moveVirtualFocus's
+      // own ensureVisible, not just the fix under test) so it starts off far outside
+      // whatever window favoriting a low group would otherwise leave rendered.
+      for (let i = 0; i < 199; i++) list.handleAction('down');
+      expect(container.querySelector<HTMLElement>('.focused')?.dataset.group).toBe('source:Group 199');
+
+      list.handleAction('green');
+      expect(ChannelCustomizationService.isGroupFavorite('Group 199')).toBe(true);
+      const focused = container.querySelector<HTMLElement>('.focused')!;
+      expect(focused.dataset.group).toBe('source:Group 199');
+      expect(focused.querySelector('.group-favorite-star')).not.toBeNull();
+    } finally {
+      playlistMock.getGroupsForPlaylist = original;
+      playlistMock.groupsRevision++;
+    }
+  });
+
   it('a number action plays that channel (1-based)', () => {
     list.handleAction('number', { number: 2 });
     expect(onSelect).toHaveBeenCalledWith(1);
