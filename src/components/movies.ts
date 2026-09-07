@@ -14,6 +14,7 @@ import { t } from '../i18n';
 // Play / Resume. The sidebar/grid/nav machinery lives in CatalogView.
 export class Movies extends CatalogView<VodCategory, VodItem> {
   protected get kicker(): string { return t('common.movies'); }
+  protected readonly catalogSection = 'movies' as const;
   protected readonly resumeKind: ResumeKind = 'vod';
   protected get emptyMessage(): string { return t('catalog.noMovies'); }
   protected get gridEmptyMessage(): string { return t('catalog.noMoviesCategory'); }

@@ -41,6 +41,8 @@ interface UserDataState {
   onlineSubPicks: Record<string, PickedOnlineSub>;
   catchupProgress: Record<string, StoredCatchup>;
   recentlyWatchedLive: RecentlyWatchedLiveEntry[];
+  /** Favorited Xtream category ids, in mark-order, keyed by `accountId|section`. */
+  catalogFavorites: Record<string, string[]>;
 }
 
 let userData: UserDataState | null = null;
@@ -80,6 +82,12 @@ function resumeKey(entry: Pick<ResumeEntry, 'accountId' | 'kind' | 'itemId'>): s
 
 function watchlistKey(entry: Pick<WatchlistEntry, 'accountId' | 'kind' | 'itemId'>): string {
   return `watch:${entry.accountId}|${entry.kind}|${entry.itemId}`;
+}
+
+// Xtream category ids are only meaningful within one account, so favorited
+// catalog categories are scoped by account as well as section (movies/series).
+function catalogFavKey(accountId: string, section: string): string {
+  return `${accountId}|${section}`;
 }
 
 function catchupKey(entry: Pick<CatchupProgressEntry, 'channelKey' | 'progStart'>): string {
@@ -148,6 +156,8 @@ function allUserRecords(data: UserDataState): Parameters<typeof replaceAllUserDa
       record(`live:${entry.channelKey}`, entry, { updatedAt: entry.updatedAt })),
     'online-sub-picks': Object.keys(data.onlineSubPicks)
       .map(key => record(`pick:${key}`, data.onlineSubPicks[key])),
+    'catalog-state': Object.keys(data.catalogFavorites)
+      .map(key => record(`fav:${key}`, data.catalogFavorites[key])),
   };
 }
 
@@ -278,6 +288,7 @@ async function loadUserDataState(): Promise<UserDataState> {
     UserDataRecord<RecentlyWatchedLiveEntry>[];
   const onlineSubPicks = records['online-sub-picks'] as
     UserDataRecord<PickedOnlineSub>[];
+  const catalogState = records['catalog-state'] as UserDataRecord<string[]>[];
 
   const data: UserDataState = {
     favorites: favorites.map(item => item.value),
@@ -291,7 +302,11 @@ async function loadUserDataState(): Promise<UserDataState> {
     onlineSubPicks: {},
     catchupProgress: {},
     recentlyWatchedLive: recentlyWatched.map(item => item.value),
+    catalogFavorites: {},
   };
+  for (const item of catalogState) {
+    if (item.key.startsWith('fav:')) data.catalogFavorites[item.key.slice(4)] = item.value;
+  }
 
   const customMeta = channelState.find(item => item.key === 'custom:meta')?.value as
     Omit<ChannelCustomization, 'overrides' | 'groupOverrides'> | undefined;
@@ -926,6 +941,34 @@ export const StorageService = {
       set('watchlist', all);
     }
     return true;
+  },
+
+  // Favorited Xtream catalog categories, in mark-order, per account and section
+  // (movies/series) — independent lists, mirroring the channel-group favorites'
+  // separation from manual reordering (there is none here yet).
+  getCatalogFavorites(accountId: string, section: string): string[] {
+    const key = catalogFavKey(accountId, section);
+    const all = userData
+      ? userData.catalogFavorites
+      : get<Record<string, string[]>>('catalog_favorites', {});
+    return (all[key] ?? []).slice();
+  },
+  toggleCatalogFavorite(accountId: string, section: string, categoryId: string): boolean {
+    const key = catalogFavKey(accountId, section);
+    const all = userData
+      ? userData.catalogFavorites
+      : get<Record<string, string[]>>('catalog_favorites', {});
+    const list = (all[key] ?? []).slice();
+    const at = list.indexOf(categoryId);
+    const favorited = at < 0;
+    if (favorited) list.push(categoryId); else list.splice(at, 1);
+    all[key] = list;
+    if (userData) {
+      persistUserChanges('catalog-state', [record(`fav:${key}`, list)]);
+    } else {
+      set('catalog_favorites', all);
+    }
+    return favorited;
   },
   removeWatchlist(accountId: string, kind: WatchlistKind, itemId: string): void {
     const key = `${accountId}|${kind}|${itemId}`;

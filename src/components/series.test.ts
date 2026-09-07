@@ -2,11 +2,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { PlaylistEntry, WatchlistEntry, WatchlistKind } from '../types';
 
-const { catalogMock, storageMock, watchlistState, toastMock } = vi.hoisted(() => {
+const { catalogMock, storageMock, watchlistState, catalogFavoritesState, toastMock } = vi.hoisted(() => {
   const watchlistState = { entries: [] as WatchlistEntry[] };
+  const catalogFavoritesState = { byKey: {} as Record<string, string[]> };
   return {
     catalogMock: { loadSeriesCategories: vi.fn(), loadSeries: vi.fn(), loadSeriesInfo: vi.fn() },
     watchlistState,
+    catalogFavoritesState,
     storageMock: {
       getResumeList: vi.fn(() => [] as unknown[]),
       getResume: vi.fn(() => null),
@@ -21,6 +23,17 @@ const { catalogMock, storageMock, watchlistState, toastMock } = vi.hoisted(() =>
         }
         watchlistState.entries.unshift(entry);
         return true;
+      }),
+      getCatalogFavorites: vi.fn((accountId: string, section: string) =>
+        (catalogFavoritesState.byKey[`${accountId}|${section}`] ?? []).slice()),
+      toggleCatalogFavorite: vi.fn((accountId: string, section: string, categoryId: string) => {
+        const key = `${accountId}|${section}`;
+        const list = catalogFavoritesState.byKey[key] ?? [];
+        const at = list.indexOf(categoryId);
+        const favorited = at < 0;
+        if (favorited) list.push(categoryId); else list.splice(at, 1);
+        catalogFavoritesState.byKey[key] = list;
+        return favorited;
       }),
     },
     toastMock: { showToast: vi.fn() },
@@ -48,6 +61,7 @@ beforeEach(() => {
   storageMock.getResumeList.mockReturnValue([]);
   storageMock.getResume.mockReturnValue(null);
   watchlistState.entries = [];
+  catalogFavoritesState.byKey = {};
   container = document.createElement('div');
   document.body.appendChild(container);
 });
@@ -98,6 +112,22 @@ describe('Series sidebar + grid', () => {
     await openWith();
     expect(container.querySelector('[data-group="__continue__"]')).not.toBeNull();
     expect(container.querySelector('[data-group="__watchlist__"]')).not.toBeNull();
+  });
+
+  it('green favorites a focused category under the series section and hoists it', async () => {
+    const cats = [{ id: '1', name: 'Cat A' }, { id: '2', name: 'Cat B' }];
+    const { view } = await openWith(cats, [series('s1', 'Series One')]);
+    const catB = container.querySelector<HTMLElement>('[data-group="2"]')!;
+    catB.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+    view.handleAction('green');
+
+    expect(storageMock.toggleCatalogFavorite).toHaveBeenCalledWith('x1', 'series', '2');
+    const categories = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-group="1"], [data-group="2"]'),
+    );
+    expect(categories.map((el) => el.dataset.group)).toEqual(['2', '1']);
+    expect(categories[0].querySelector('.group-favorite-star')).not.toBeNull();
+    expect(container.querySelector('.focused')?.getAttribute('data-group')).toBe('2');
   });
 
   it('shows the Watchlist entry from stored series snapshots', async () => {

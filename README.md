@@ -254,14 +254,22 @@ Open with the **Blue** key or the **Settings** tab in the top bar. Sections:
 | Red | Open EPG | Open EPG | — |
 | Blue | Open settings | Open settings | Open settings |
 | Yellow | Show OSD | Edit channel list | Search guide |
-| Green | Toggle favorite (in sidebar/menu) | Toggle favorite (on focused channel) | Jump to today |
+| Green | Toggle favorite (in sidebar/menu) | Toggle favorite (on focused channel or group) | Jump to today |
 | Play/Pause | Pause/resume playback | — | — |
 | Rewind/Fast-Forward | To oldest / Go to live (live DVR) | — | — |
 | Ch +/- | Channel +/- | Previous/next channel | Jump 10 channels/programs |
 | 0-9 | Direct channel entry | Direct channel entry | — |
 
-Movies, Series, Search, Settings, and Reminder Manager use standard D-pad
-navigation; **Back** returns to the previous view.
+Movies and Series use standard D-pad navigation for their category sidebar and
+poster grid, plus **Green** to favorite the focused category (hoisting it
+above the rest, below the pinned Continue Watching/Watchlist entries). Search,
+Settings, and Reminder Manager use plain D-pad navigation with no color-key
+actions. **Back** returns to the previous view everywhere.
+
+On a physical remote, Red/Green/Yellow/Blue send dedicated color-button codes
+that a normal PC keyboard cannot produce, so pressing **F** in the desktop
+preview is a keyboard-only alias for Green (favorite/toggle), letting you test
+that action without a real remote or the browser console.
 
 ## Docs
 

@@ -61,3 +61,9 @@ export function html(strings: TemplateStringsArray, ...values: unknown[]): Safe 
   }
   return new Safe(out);
 }
+
+// Escape a value for use inside a `[attr="..."]` selector. Only `\` and `"`
+// matter. Avoids relying on `CSS.escape` which jsdom does not implement.
+export function attrSelectorEscape(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}

@@ -1,12 +1,12 @@
 import type { Action, PlaylistEntry, ResumeEntry, ResumeKind, VodPlayback } from '../types';
 import { SpatialNav } from '../navigation/spatial-nav';
-import { html, raw, Safe } from '../utils/dom';
+import { attrSelectorEscape, html, raw, Safe } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { StorageService } from '../services/storage-service';
 import { t } from '../i18n';
 import { VirtualGrid } from '../utils/virtual-grid';
 import { VirtualScrollGuard } from '../utils/virtual-scroll';
-import { SidebarList, type SidebarEntry } from './sidebar-list';
+import { SidebarList, applyFavoriteOrder, type SidebarEntry } from './sidebar-list';
 import { groupIcon } from './group-icon';
 import { createLogger } from '../utils/logger';
 
@@ -112,6 +112,7 @@ export abstract class CatalogView<C extends { id: string; name: string }, I> {
 
   // --- subclass configuration ---
   protected abstract readonly kicker: string;             // grid-title fallback, e.g. 'Movies'
+  protected abstract readonly catalogSection: 'movies' | 'series'; // favorite-category storage scope
   protected abstract readonly resumeKind: ResumeKind;     // which resume entries this section owns
   protected abstract readonly emptyMessage: string;       // no catalog on the account
   protected abstract readonly gridEmptyMessage: string;   // empty category grid
@@ -254,6 +255,9 @@ export abstract class CatalogView<C extends { id: string; name: string }, I> {
         case 'select':
           this.onSelect();
           return;
+        case 'green':
+          this.toggleFocusedCategoryFavorite();
+          return;
         case 'back':
           this.onBack();
           return;
@@ -303,6 +307,15 @@ export abstract class CatalogView<C extends { id: string; name: string }, I> {
       const item = this.findItem(el.dataset.categoryId ?? '', el.dataset.itemId);
       if (item) void this.openDetail(item);
     }
+  }
+
+  private toggleFocusedCategoryFavorite(): void {
+    const focused = this.nav.focused;
+    if (!this.account || focused?.dataset.favoritable !== 'true' || focused.dataset.favoriteKey === undefined) {
+      return;
+    }
+    StorageService.toggleCatalogFavorite(this.account.id, this.catalogSection, focused.dataset.favoriteKey);
+    this.renderGrid();
   }
 
   private focusedInGrid(): boolean {
@@ -450,7 +463,7 @@ export abstract class CatalogView<C extends { id: string; name: string }, I> {
   }
 
   private buildSidebarEntries(): SidebarEntry[] {
-    return [
+    const entries: SidebarEntry[] = [
       {
         id: CONTINUE_ID,
         label: t('catalog.continueWatching'),
@@ -463,8 +476,17 @@ export abstract class CatalogView<C extends { id: string; name: string }, I> {
         count: this.watchlistTilesCache.length,
         icon: raw(groupIcon(t('common.watchlist'), 'favorites')),
       },
-      ...this.categories.map((c) => ({ id: c.id, label: c.name, icon: raw(groupIcon(c.name)) })),
+      ...this.categories.map((c) => ({
+        id: c.id,
+        label: c.name,
+        icon: raw(groupIcon(c.name)),
+        favoritable: true,
+      })),
     ];
+    const favoriteIds = this.account
+      ? StorageService.getCatalogFavorites(this.account.id, this.catalogSection)
+      : [];
+    return applyFavoriteOrder(entries, favoriteIds);
   }
 
   private currentTitle(): string {
@@ -488,6 +510,10 @@ export abstract class CatalogView<C extends { id: string; name: string }, I> {
 
   protected renderGrid(restoreFocus = true): void {
     this.mode = 'grid';
+    // Captured before morph so a favorite toggle (which can reorder the
+    // sidebar) or a category select still finds the same row afterward — the
+    // id is stable even though its position isn't.
+    const wantedKey = this.nav.focused?.getAttribute('data-key') ?? null;
     if (this.account) {
       this.resume = StorageService.getResumeList(this.account.id).filter((e) => e.kind === this.resumeKind);
     }
@@ -515,6 +541,12 @@ export abstract class CatalogView<C extends { id: string; name: string }, I> {
     const previousSidebarList = this.container.querySelector<HTMLElement>('.group-list');
     this.sidebar.captureScrollOffset(previousSidebarList);
     const sidebarViewportHeight = previousSidebarList?.clientHeight || SIDEBAR_VIEWPORT_FALLBACK;
+    const wantedSidebarPosition = wantedKey?.indexOf('g:') === 0
+      ? this.sidebar.positionOf(this.sidebarEntries, wantedKey.slice(2))
+      : -1;
+    if (restoreFocus && wantedSidebarPosition >= 0) {
+      this.sidebar.ensureVisible(wantedSidebarPosition, sidebarViewportHeight);
+    }
 
     const previousView = this.container.querySelector<HTMLElement>('.catalog-main');
     const previousTrack = this.container.querySelector<HTMLElement>('.catalog-grid-track');
@@ -570,10 +602,12 @@ export abstract class CatalogView<C extends { id: string; name: string }, I> {
       : this.gridVirtualizer.scrollOffset + this.gridTrackStart(view, track);
     if (view) this.scrollGuard.syncOffset(view, 'vertical', viewOffset);
     if (restoreFocus) {
-      const focused = this.container.querySelector<HTMLElement>(
+      const target = (wantedKey
+        ? this.container.querySelector<HTMLElement>(`[data-key="${attrSelectorEscape(wantedKey)}"]`)
+        : null) ?? this.container.querySelector<HTMLElement>(
         `[data-grid-index="${this.gridFocusIndex}"] [data-focusable]`,
       );
-      this.nav.focus(focused);
+      this.nav.focus(target);
     } else this.nav.clearDetachedFocus();
   }
 

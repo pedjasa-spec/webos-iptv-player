@@ -825,3 +825,23 @@ describe('StorageService channel customization store', () => {
     expect(StorageService.getShowHiddenChannels()).toBe(true);
   });
 });
+
+describe('StorageService catalog favorites store', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('is empty by default and toggles independently per account and section', () => {
+    expect(StorageService.getCatalogFavorites('a1', 'movies')).toEqual([]);
+
+    expect(StorageService.toggleCatalogFavorite('a1', 'movies', '7')).toBe(true);
+    expect(StorageService.toggleCatalogFavorite('a1', 'movies', '3')).toBe(true);
+    expect(StorageService.getCatalogFavorites('a1', 'movies')).toEqual(['7', '3']);
+
+    // A different section on the same account, and the same section on a
+    // different account, both stay untouched.
+    expect(StorageService.getCatalogFavorites('a1', 'series')).toEqual([]);
+    expect(StorageService.getCatalogFavorites('a2', 'movies')).toEqual([]);
+
+    expect(StorageService.toggleCatalogFavorite('a1', 'movies', '7')).toBe(false);
+    expect(StorageService.getCatalogFavorites('a1', 'movies')).toEqual(['3']);
+  });
+});

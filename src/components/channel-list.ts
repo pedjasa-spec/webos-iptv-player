@@ -8,7 +8,7 @@ import type {
   NumberEvent,
 } from '../types';
 import { SpatialNav } from '../navigation/spatial-nav';
-import { html, raw, type Safe } from '../utils/dom';
+import { attrSelectorEscape, html, raw, type Safe } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { channelKey, groupDisplayLabel } from '../utils/channel';
 import { formatPosition } from '../utils/time';
@@ -698,10 +698,4 @@ export class ChannelList {
     return this.groupEntries;
   }
 
-}
-
-// Escape a value for use inside a `[attr="..."]` selector. Only `\` and `"`
-// matter. Avoids relying on `CSS.escape` which jsdom does not implement.
-function attrSelectorEscape(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }

@@ -24,6 +24,7 @@ const EPISODE_VIEWPORT_FALLBACK = 984;
 // in CatalogView.
 export class Series extends CatalogView<SeriesCategory, SeriesItem> {
   protected get kicker(): string { return t('common.series'); }
+  protected readonly catalogSection = 'series' as const;
   protected readonly resumeKind: ResumeKind = 'episode';
   protected get emptyMessage(): string { return t('catalog.noSeries'); }
   protected get gridEmptyMessage(): string { return t('catalog.noSeriesCategory'); }

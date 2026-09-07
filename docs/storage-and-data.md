@@ -9,7 +9,7 @@ downloaded data that can be recreated.
 | Data | Examples | Where it is kept | Removed by Clear Cache? |
 | --- | --- | --- | --- |
 | Setup and preferences | Playlist and EPG sources, Xtream account details, theme, language, text size, time zone, active account and channel | Small app-private browser storage | No |
-| Personal data | Favorites, reminders, channel order and names, hidden channels, Watchlist, Recently Watched, playback progress, audio and subtitle choices | App-private database on the TV | No |
+| Personal data | Favorites, reminders, channel order and names, hidden channels, favorited channel groups and catalog categories, Watchlist, Recently Watched, playback progress, audio and subtitle choices | App-private database on the TV | No |
 | Downloaded cache | Parsed playlists, program guides, movie and series catalogs, media metadata, downloaded subtitles, channel health results | App-private database on the TV | Yes |
 | LAN-uploaded playlists | Original M3U files uploaded from another device | Private storage owned by the bundled upload service | No |
 
@@ -121,7 +121,7 @@ origin, so object-store names do not repeat the `iptv_` prefix.
 | --- | --- | --- | --- |
 | `favorites` | `favorite:<channel-key>` | None | Stable channel keys |
 | `reminders` | `reminder:<channel-key>\|<start-ms>` | None | Channel key/name, EPG source URL, program title, start/stop milliseconds, answered flag; `updatedAt` is the start time |
-| `channel-state` | `custom:meta` | None | Customization version, channel/group order, and user-created group keys |
+| `channel-state` | `custom:meta` | None | Customization version, channel/group order, favorited group keys (mark-order), and user-created group keys |
 | `channel-state` | `custom:channel:<channel-key>` | None | Optional renamed display name, destination group, and hidden flag |
 | `channel-state` | `custom:group:<group-key>` | None | Optional renamed group name and hidden flag |
 | `channel-state` | `audio:<channel-key>` | None | Preferred audio rendition name and language |
@@ -132,6 +132,7 @@ origin, so object-store names do not repeat the `iptv_` prefix.
 | `playback-progress` | `catchup:<channel-key>\|<program-start>` | `expiresAt`, `updatedAt` | EPG source URL, program start/stop, title/description/icon snapshot, position, completion, update time, and computed expiry |
 | `recently-watched` | `live:<channel-key>` | `updatedAt` | Channel key and last-confirmed watch time; capped to 30 live entries |
 | `online-sub-picks` | `pick:<account-id>\|<vod-or-episode>\|<item-id>` | None | Provider id, provider result id, display name, language, and subtitle format |
+| `catalog-state` | `fav:<account-id>\|<movies-or-series>` | None | Favorited Xtream category ids, in mark-order |
 
 Every user store uses `key` as its key path. The common record shape is:
 
@@ -320,7 +321,8 @@ health results. It keeps:
 - Accounts and source settings
 - App preferences
 - Favorites and reminders
-- Channel customization
+- Channel customization, including favorited channel groups
+- Favorited Movies/Series catalog categories
 - Watchlist and Recently Watched
 - Playback progress
 - Audio and subtitle choices
@@ -407,7 +409,7 @@ The app flushes pending writes when it moves to the background and before an
 explicit exit. A failed flush triggers one recovery attempt:
 
 1. Serialize the complete current in-memory user-data snapshot.
-2. Replace all seven user-data stores in one transaction.
+2. Replace all eight user-data stores in one transaction.
 3. Wait for the write chain again.
 
 If recovery succeeds, the flush emits a recovered event. If it still fails, an
