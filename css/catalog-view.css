@@ -1,5 +1,7 @@
 /* Shared styles for the Xtream catalog sections (Movies, Series) and the
-   Search results: hero, horizontal rails, poster grid, and the detail screens. */
+   Search results: a category sidebar (reusing the Live channel list's
+   .sidebar/.group-list/.group-item rules) next to a poster grid, and the
+   detail screens. */
 .catalog-hint {
   margin: 0;
   font-size: 30px;
@@ -17,65 +19,25 @@
 .catalog-loading,
 .catalog-empty { display: flex; align-items: center; justify-content: center; height: 100%; }
 
-.catalog-browse { position: relative; padding: 0; overflow: hidden; }
+.catalog-view.catalog-grid { display: flex; padding: 0; overflow: hidden; }
 
-.catalog-hero {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background-size: cover;
-  background-position: center 28%;
-  background-color: var(--bg-primary);
-}
-.catalog-hero-scrim {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background:
-    linear-gradient(90deg, rgb(var(--catalog-hero-scrim-rgb) / 0.95) 2%, rgb(var(--catalog-hero-scrim-rgb) / 0.5) 40%, transparent 72%),
-    linear-gradient(0deg, var(--bg-primary) 6%, transparent 52%);
-}
-.catalog-hero-body {
-  position: absolute;
-  left: 80px; top: 120px;
-  max-width: 960px;
-  z-index: 1;
-}
-.catalog-hero-kicker {
-  font-size: 22px; letter-spacing: 4px; font-weight: 700;
-  color: var(--accent); text-transform: uppercase;
-}
-.catalog-hero-title {
-  margin: 12px 0 0; font-size: 64px; font-weight: 800;
-  color: var(--text-primary); line-height: 1.05;
-}
-
-.catalog-rails {
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
+.catalog-main {
+  flex: 1;
   overflow-y: auto;
-  z-index: 2;
-}
-.catalog-rails-spacer { height: 58%; }
-.catalog-rails-body {
-  min-height: 42%;
-  padding: 8px 80px 60px;
-  background: linear-gradient(180deg, transparent 0, rgb(var(--catalog-hero-scrim-rgb) / 0.85) 90px, var(--bg-primary) 240px);
-}
-
-.catalog-rail { margin-bottom: 28px; }
-.catalog-rail-title { margin: 0 0 12px; font-size: 30px; font-weight: 600; color: var(--text-primary); }
-.catalog-rail-track { display: flex; gap: 20px; overflow-x: auto; padding: 12px 12px 20px; margin: 0 -12px; }
-.catalog-category-rail { height: 152px; display: block; overflow-anchor: none; }
-.catalog-category-rail-spacer { position: relative; height: 120px; }
-.catalog-category-rail-cell {
-  position: absolute;
-  top: 0;
-  width: 300px;
-  height: 120px;
+  overflow-anchor: none;
+  box-sizing: border-box;
+  padding: 40px 80px 60px;
 }
 
 .catalog-grid-title { margin: 0 0 24px; font-size: 44px; font-weight: 700; color: var(--text-primary); }
 .catalog-grid-track { position: relative; width: 100%; }
 .catalog-grid-cell { position: absolute; width: 220px; height: 371px; }
+
+/* Horizontal poster rails — used by Search's own result rows (Channels /
+   Movies / Series), independent of the Movies/Series sidebar+grid above. */
+.catalog-rail { margin-bottom: 28px; }
+.catalog-rail-title { margin: 0 0 12px; font-size: 30px; font-weight: 600; color: var(--text-primary); }
+.catalog-rail-track { display: flex; gap: 20px; overflow-x: auto; padding: 12px 12px 20px; margin: 0 -12px; }
 
 .catalog-tile { width: 220px; flex: 0 0 auto; cursor: pointer; }
 .catalog-poster-wrap {
@@ -89,8 +51,7 @@
   margin-top: 10px; font-size: 22px; color: var(--text-primary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.catalog-tile.focused,
-.catalog-cat.focused {
+.catalog-tile.focused {
   box-shadow: none;
   border-color: transparent !important;
 }
@@ -98,19 +59,6 @@
   outline: 3px solid var(--catalog-focus);
   outline-offset: 2px;
   box-shadow: 0 0 0 6px rgb(var(--catalog-focus-rgb) / 0.25), 0 10px 24px rgba(0, 0, 0, 0.6);
-}
-
-.catalog-cat {
-  width: 300px; height: 120px; flex: 0 0 auto;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 12px; background: var(--catalog-surface); border: 3px solid transparent;
-  font-size: 26px; color: var(--text-primary); text-align: center; padding: 0 16px;
-  box-sizing: border-box;
-}
-.catalog-cat.focused {
-  outline: 3px solid var(--catalog-focus);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 6px rgb(var(--catalog-focus-rgb) / 0.25);
 }
 
 .movies-detail { display: flex; gap: 56px; }

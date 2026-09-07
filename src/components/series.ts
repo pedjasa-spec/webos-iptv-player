@@ -18,10 +18,10 @@ const EPISODE_OVERSCAN = 5;
 // space left under the header.
 const EPISODE_VIEWPORT_FALLBACK = 984;
 
-// The Series section: browse (Continue rail of resumed episodes + per-category
-// rails + an "all categories" drill-in) → per-category poster grid → a detail
-// screen with a season selector over an episode list. The browse/grid/nav
-// machinery lives in CatalogView.
+// The Series section: a category sidebar (with pinned Continue Watching /
+// Watchlist entries) next to a per-category poster grid → a detail screen with
+// a season selector over an episode list. The sidebar/grid/nav machinery lives
+// in CatalogView.
 export class Series extends CatalogView<SeriesCategory, SeriesItem> {
   protected get kicker(): string { return t('common.series'); }
   protected readonly resumeKind: ResumeKind = 'episode';
@@ -73,27 +73,18 @@ export class Series extends CatalogView<SeriesCategory, SeriesItem> {
     this.detailController = null;
   }
 
-  protected continueRail(): Safe | '' {
-    return this.resume.length
-      ? this.rail(t('catalog.continueWatching'), this.resume.map((r) => this.resumeTile(r)))
-      : '';
+  protected continueTiles(): Safe[] {
+    return this.resume.map((r) => this.resumeTile(r));
   }
 
-  protected watchlistRail(): Safe | '' {
-    const entries = StorageService.getWatchlist(this.account!.id, 'series');
-    return entries.length
-      ? this.rail(t('common.watchlist'), entries.map((entry) => this.tile(this.watchlistEntryToSeries(entry))))
-      : '';
+  protected watchlistTiles(): Safe[] {
+    return StorageService.getWatchlist(this.account!.id, 'series')
+      .map((entry) => this.tile(this.watchlistEntryToSeries(entry)));
   }
 
   protected fallbackItem(seriesId: string): SeriesItem | null {
     const entry = StorageService.getWatchlist(this.account!.id, 'series')
       .find((item) => item.itemId === seriesId);
-    return entry ? this.watchlistEntryToSeries(entry) : null;
-  }
-
-  protected heroFallback(): SeriesItem | null {
-    const entry = StorageService.getWatchlist(this.account!.id, 'series')[0];
     return entry ? this.watchlistEntryToSeries(entry) : null;
   }
 

@@ -61,37 +61,29 @@ async function openWith(cats = [{ id: '1', name: 'Cat A' }], items = [series('s1
   return { view, handlers };
 }
 
-describe('Series browse + grid', () => {
-  it('renders a rail per preloaded category with poster tiles', async () => {
+// Hovering a sidebar row and pressing select — the same click/select path a
+// remote or a pointer takes; mirrors selecting a channel group in the Live
+// sidebar's own tests.
+function selectSidebarEntry(container: HTMLElement, view: Series, id: string): void {
+  const entry = container.querySelector<HTMLElement>(`[data-group="${id}"]`)!;
+  entry.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+  view.handleAction('select');
+}
+
+describe('Series sidebar + grid', () => {
+  it('shows categories in the sidebar with the first category selected by default', async () => {
     await openWith([{ id: '1', name: 'Cat A' }], [series('s1', 'Series One')]);
-    expect(container.querySelector('.catalog-rail-title')?.textContent).toContain('Cat A');
+    expect(container.querySelector('[data-group="1"] .group-name')?.textContent).toContain('Cat A');
+    expect(container.querySelector('[data-group="1"].active')).not.toBeNull();
     expect(container.querySelector('.catalog-tile[data-item-id="s1"]')?.textContent).toContain('Series One');
   });
 
-  it('updates the hero title and backdrop to the focused series', async () => {
-    const s1 = { accountId: 'x1', seriesId: 's1', name: 'Series One', poster: 'http://host/a1.jpg', rating: '', categoryId: '1' };
-    const s2 = { accountId: 'x1', seriesId: 's2', name: 'Series Two', poster: 'http://host/a2.jpg', rating: '', categoryId: '1' };
-    await openWith([{ id: '1', name: 'Cat A' }], [s1, s2]);
-    const hero = container.querySelector<HTMLElement>('.catalog-hero')!;
-    const title = () => container.querySelector('.catalog-hero-title')?.textContent;
-
-    container.querySelector('.catalog-tile[data-item-id="s2"]')!
-      .dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
-    expect(title()).toBe('Series Two');
-    expect(hero.style.backgroundImage).toContain('a2.jpg');
-
-    container.querySelector('.catalog-tile[data-item-id="s1"]')!
-      .dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
-    expect(title()).toBe('Series One');
-    expect(hero.style.backgroundImage).toContain('a1.jpg');
-  });
-
-  it('shows a Continue rail from the episode resume list and resumes an episode directly', async () => {
+  it('selects Continue Watching by default and resumes an episode directly', async () => {
     storageMock.getResumeList.mockReturnValue([
       { accountId: 'x1', kind: 'episode', itemId: 'e1', name: 'Series One — S1E1 — Episode One', poster: '', ext: 'mkv', position: 300, duration: 1500, updatedAt: 1 },
     ]);
     const { view, handlers } = await openWith();
-    expect(container.textContent).toContain('Continue Watching');
+    expect(container.querySelector('[data-group="__continue__"].active')).not.toBeNull();
     const tile = container.querySelector('.catalog-tile[data-resume-episode="e1"]') as HTMLElement;
     expect(tile).not.toBeNull();
     tile.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
@@ -102,14 +94,20 @@ describe('Series browse + grid', () => {
     }));
   });
 
-  it('shows a Watchlist rail from stored series snapshots', async () => {
+  it('always shows the Continue Watching and Watchlist sidebar entries, even when empty', async () => {
+    await openWith();
+    expect(container.querySelector('[data-group="__continue__"]')).not.toBeNull();
+    expect(container.querySelector('[data-group="__watchlist__"]')).not.toBeNull();
+  });
+
+  it('shows the Watchlist entry from stored series snapshots', async () => {
     watchlistState.entries = [{
       accountId: 'x1', kind: 'series', itemId: 's9', name: 'Saved Series',
       poster: '', rating: '', categoryId: '9', addedAt: 2,
     }];
     catalogMock.loadSeriesInfo.mockResolvedValue({ seasons: [], episodesBySeason: {} });
     const { view } = await openWith();
-    expect(container.textContent).toContain('Watchlist');
+    selectSidebarEntry(container, view, '__watchlist__');
     const tile = container.querySelector('.catalog-tile[data-item-id="s9"]') as HTMLElement;
     expect(tile.textContent).toContain('Saved Series');
     tile.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
@@ -124,25 +122,19 @@ describe('Series browse + grid', () => {
     expect(handlers.onRevealTabBar).toHaveBeenCalled();
   });
 
-  it('drills into a non-rail category grid and back to browse', async () => {
-    // 7 categories: the first RAIL_CATEGORIES (6) become poster rails; the 7th
-    // is a non-rail tile in the "All Categories" rail — the drill-in target.
+  it('switches to a category via the sidebar and Back leaves the section', async () => {
     const cats = Array.from({ length: 7 }, (_, i) => ({ id: String(i + 1), name: `Cat ${i + 1}` }));
     const { view, handlers } = await openWith(cats, [series('s1', 'Series One')]);
-    const cat = container.querySelector('.catalog-cat[data-category-id="7"]') as HTMLElement;
-    expect(cat).not.toBeNull();
-    cat.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
     catalogMock.loadSeries.mockResolvedValue([series('s2', 'Series Two', '7')]);
-    view.handleAction('select');
+    selectSidebarEntry(container, view, '7');
     await Promise.resolve(); await Promise.resolve();
-    expect(container.querySelector('.catalog-grid')).not.toBeNull();
+    expect(container.querySelector('[data-group="7"].active')).not.toBeNull();
     expect(container.querySelector('.catalog-tile[data-item-id="s2"]')).not.toBeNull();
     view.handleAction('back');
-    expect(container.querySelector('.catalog-browse')).not.toBeNull();
-    expect(handlers.onBack).not.toHaveBeenCalled();
+    expect(handlers.onBack).toHaveBeenCalled();
   });
 
-  it('opens a series detail on select and backs out to browse', async () => {
+  it('opens a series detail on select and backs out to the grid view', async () => {
     catalogMock.loadSeriesInfo.mockResolvedValue({ seasons: [], episodesBySeason: {} });
     const { view, handlers } = await openWith();
     const tile = container.querySelector('.catalog-tile[data-item-id="s1"]') as HTMLElement;
@@ -152,21 +144,24 @@ describe('Series browse + grid', () => {
     expect(container.querySelector('.series-detail')).not.toBeNull();
     expect(container.textContent).toContain('Series One');
     view.handleAction('back');
-    expect(container.querySelector('.catalog-browse')).not.toBeNull();
+    expect(container.querySelector('.catalog-view.catalog-grid')).not.toBeNull();
     expect(handlers.onBack).not.toHaveBeenCalled();
   });
 
-  it('goes back to Live from the browse top level', async () => {
+  it('goes back to Live from the grid view', async () => {
     const { view, handlers } = await openWith();
     view.handleAction('back');
     expect(handlers.onBack).toHaveBeenCalled();
   });
 
-  it('refreshes the Continue rail from storage on each browse render', async () => {
+  it('refreshes the Continue Watching entry from storage after returning from detail', async () => {
     catalogMock.loadSeriesInfo.mockResolvedValue({ seasons: [], episodesBySeason: {} });
     const { view } = await openWith();
-    expect(container.textContent).not.toContain('Continue Watching');
-    // An episode is watched, so a resume entry now exists; walking detail -> browse
+    selectSidebarEntry(container, view, '__continue__');
+    expect(container.querySelector('.catalog-tile[data-resume-episode]')).toBeNull();
+    selectSidebarEntry(container, view, '1');
+
+    // An episode is watched, so a resume entry now exists; walking detail -> grid
     // should surface it without re-entering the section.
     storageMock.getResumeList.mockReturnValue([
       { accountId: 'x1', kind: 'episode', itemId: 'e1', name: 'Series One — S1E1', poster: '', ext: 'mp4', position: 300, duration: 1500, updatedAt: 1 },
@@ -175,8 +170,9 @@ describe('Series browse + grid', () => {
     tile.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
     view.handleAction('select');
     await Promise.resolve(); await Promise.resolve();
-    view.handleAction('back'); // detail -> browse re-render
-    expect(container.textContent).toContain('Continue Watching');
+    view.handleAction('back'); // detail -> grid re-render, refreshing Continue Watching
+    selectSidebarEntry(container, view, '__continue__');
+    expect(container.querySelector('.catalog-tile[data-resume-episode="e1"]')).not.toBeNull();
   });
 });
 
@@ -365,7 +361,7 @@ describe('Series deep-link (openItem)', () => {
     await view.openItem(account, series('s9', 'Deep Series', '9'), onDetailBack);
     expect(container.querySelector('.series-detail')).not.toBeNull();
     expect(container.textContent).toContain('Deep Series');
-    expect(container.querySelector('.catalog-browse')).toBeNull();
+    expect(container.querySelector('.catalog-view.catalog-grid')).toBeNull();
     view.handleAction('back');
     expect(onDetailBack).toHaveBeenCalledTimes(1);
     expect(handlers.onBack).not.toHaveBeenCalled();

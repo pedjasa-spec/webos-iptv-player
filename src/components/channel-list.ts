@@ -21,6 +21,7 @@ import { groupIcon } from './group-icon';
 import { showToast } from './toast';
 import { getLocale, t, tp, type SupportedLocale } from '../i18n';
 import { ChannelListEditor } from './channel-list-editor';
+import { SidebarList, type SidebarEntry } from './sidebar-list';
 import { VirtualList } from '../utils/virtual-list';
 import { VirtualScrollGuard } from '../utils/virtual-scroll';
 
@@ -48,7 +49,7 @@ export class ChannelList {
     overscan: CHANNEL_OVERSCAN,
     fallbackViewportSize: CHANNEL_VIEWPORT_FALLBACK,
   });
-  private readonly groupVirtualizer = new VirtualList({
+  private readonly groupSidebar = new SidebarList({
     itemSize: GROUP_ROW_STRIDE,
     overscan: CHANNEL_OVERSCAN,
     fallbackViewportSize: CHANNEL_VIEWPORT_FALLBACK,
@@ -119,9 +120,9 @@ export class ChannelList {
     this.container.addEventListener('scroll', (e: Event) => {
       const target = e.target as HTMLElement;
       if (target.classList.contains('group-list')) {
-        const offset = this.scrollGuard.readUserOffset(target, 'vertical');
+        const offset = this.groupSidebar.readUserScrollOffset(target);
         if (offset === null) return;
-        this.groupVirtualizer.setScrollOffset(offset);
+        this.groupSidebar.setScrollOffset(offset);
         if (this.groupScrollFrame !== null) return;
         this.groupScrollFrame = requestAnimationFrame(() => {
           this.groupScrollFrame = null;
@@ -191,7 +192,7 @@ export class ChannelList {
     } else if (!showingRecent && ensureFocus && previousMain) {
       this.channelVirtualizer.setScrollOffset(previousMain.scrollTop);
     }
-    if (previousGroupList) this.groupVirtualizer.setScrollOffset(previousGroupList.scrollTop);
+    this.groupSidebar.captureScrollOffset(previousGroupList);
     const viewportHeight = previousMain?.clientHeight || CHANNEL_VIEWPORT_FALLBACK;
     let wantedPosition = filteredChannels.findIndex(
       ch => `ch:${String(PlaylistService.indexOf(ch))}` === wantedKey,
@@ -211,9 +212,8 @@ export class ChannelList {
       10,
     );
     if (ensureFocus && focusedGroupPosition >= 0) {
-      this.groupVirtualizer.ensureVisible(focusedGroupPosition, groupViewportHeight);
+      this.groupSidebar.ensureVisible(focusedGroupPosition, groupViewportHeight);
     }
-    const groupRange = this.groupVirtualizer.getRange(groups.length, groupViewportHeight);
 
     morph(this.container, html`
       <div class="channel-view ${editing && !managingFavorites ? 'editing' : ''} ${
@@ -247,17 +247,11 @@ export class ChannelList {
               `)}
             </div>
           ` : ''}
-          <div class="group-list">
-            <div class="group-list-spacer"
-                 style="height:${this.groupVirtualizer.getTotalSize(groups.length)}px">
-              ${groups.slice(groupRange.start, groupRange.end).map((g, offset) =>
-                this.renderGroup(
-                  g,
-                  groupRange.start + offset,
-                  this.groupVirtualizer.getItemOffset(groupRange.start + offset),
-                ))}
-            </div>
-          </div>
+          ${this.groupSidebar.render(
+            this.toSidebarEntries(groups),
+            this.currentGroup,
+            groupViewportHeight,
+          )}
         </div>
         <div class="channel-main" data-nav-container data-nav-enter="last-focused">
           <div class="channel-list-scroll ${showingRecent ? 'recent-list' : ''}">
@@ -322,10 +316,7 @@ export class ChannelList {
     if (main && !showingRecent) {
       this.scrollGuard.syncOffset(main, 'vertical', this.channelVirtualizer.scrollOffset);
     }
-    const groupList = this.container.querySelector<HTMLElement>('.group-list');
-    if (groupList) {
-      this.scrollGuard.syncOffset(groupList, 'vertical', this.groupVirtualizer.scrollOffset);
-    }
+    this.groupSidebar.applyScrollOffset(this.container.querySelector<HTMLElement>('.group-list'));
 
     // An inline rename / new-group field owns the keyboard while it is open.
     this.editor.focusTextInput();
@@ -422,34 +413,26 @@ export class ChannelList {
     return false;
   }
 
-  private renderGroup(
-    g: { id: ChannelGroupId; label: string; builtin?: BuiltinChannelGroup },
-    position: number,
-    top: number,
-  ): Safe {
-    const isSource = g.id.indexOf('source:') === 0;
-    const key = isSource
-      ? this.editor.groupKeyForDisplay(g.id.slice('source:'.length))
-      : '';
-    const hidden = isSource && this.editor.isGroupHidden(key);
-    const grabbed = this.editor.isGroupGrabbed(key);
-    const renaming = this.editor.isGroupRenaming(key);
-    const count = g.id === 'builtin:recently-watched'
-      ? this.recentItems.length
-      : PlaylistService.getGroupCount(g.id, this.currentPlaylist || undefined);
-
-    return html`
-      <div class="group-item ${g.id === this.currentGroup ? 'active' : ''} ${hidden ? 'hidden-entry' : ''} ${grabbed ? 'grabbed' : ''}"
-           data-key="g:${g.id}"
-           data-focusable data-group="${g.id}" data-group-position="${position}"
-           style="top:${top}px">
-        <span class="group-icon">${raw(groupIcon(g.label, g.builtin))}</span>
-        ${renaming
-          ? html`<input class="edit-text-input" type="text" value="${g.label}">`
-          : html`<span class="group-name">${g.label}</span>`}
-        <span class="group-count">${count}</span>
-      </div>
-    `;
+  private toSidebarEntries(
+    groups: { id: ChannelGroupId; label: string; builtin?: BuiltinChannelGroup }[],
+  ): SidebarEntry[] {
+    return groups.map((g) => {
+      const isSource = g.id.indexOf('source:') === 0;
+      const key = isSource
+        ? this.editor.groupKeyForDisplay(g.id.slice('source:'.length))
+        : '';
+      return {
+        id: g.id,
+        label: g.label,
+        count: g.id === 'builtin:recently-watched'
+          ? this.recentItems.length
+          : PlaylistService.getGroupCount(g.id, this.currentPlaylist || undefined),
+        icon: raw(groupIcon(g.label, g.builtin)),
+        hidden: isSource && this.editor.isGroupHidden(key),
+        grabbed: this.editor.isGroupGrabbed(key),
+        renaming: this.editor.isGroupRenaming(key),
+      };
+    });
   }
 
   setPlaying(idx: number, catchupStart?: number | null): void {
@@ -636,14 +619,15 @@ export class ChannelList {
     const focused = this.nav.focused;
     const rawGroupPosition = focused?.dataset.groupPosition;
     if (rawGroupPosition !== undefined) {
-      const next = parseInt(rawGroupPosition, 10) + delta;
       const groups = this.getGroupEntries();
-      if (next < 0 || next >= groups.length) return false;
       const list = this.container.querySelector<HTMLElement>('.group-list');
-      this.groupVirtualizer.ensureVisible(
-        next,
+      const next = this.groupSidebar.moveFocusIndex(
+        delta,
+        groups.length,
+        parseInt(rawGroupPosition, 10),
         list?.clientHeight || CHANNEL_VIEWPORT_FALLBACK,
       );
+      if (next === null) return false;
       this.render(false);
       const target = this.container.querySelector<HTMLElement>(
         `[data-group-position="${String(next)}"]`,

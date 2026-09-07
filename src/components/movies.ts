@@ -9,9 +9,9 @@ import { PLAY_ICON, watchlistIcon } from './icons';
 import { showToast } from './toast';
 import { t } from '../i18n';
 
-// The Movies section: browse (Continue rail + per-category rails + an "all
-// categories" drill-in) → per-category poster grid → a detail screen with
-// Play / Resume. The browse/grid/nav machinery lives in CatalogView.
+// The Movies section: a category sidebar (with pinned Continue Watching /
+// Watchlist entries) next to a per-category poster grid → a detail screen with
+// Play / Resume. The sidebar/grid/nav machinery lives in CatalogView.
 export class Movies extends CatalogView<VodCategory, VodItem> {
   protected get kicker(): string { return t('common.movies'); }
   protected readonly resumeKind: ResumeKind = 'vod';
@@ -56,10 +56,6 @@ export class Movies extends CatalogView<VodCategory, VodItem> {
   protected fallbackItem(streamId: string): VodItem | null {
     return this.resumeToVod(streamId) ?? this.watchlistToVod(streamId);
   }
-  protected heroFallback(): VodItem | null {
-    return this.resumeToVod(this.resume[0]?.itemId ?? '')
-      ?? this.watchlistToVod(StorageService.getWatchlist(this.account!.id, 'vod')[0]?.itemId ?? '');
-  }
 
   private resumeToVod(streamId: string): VodItem | null {
     const r = this.resume.find((e) => e.itemId === streamId);
@@ -67,17 +63,12 @@ export class Movies extends CatalogView<VodCategory, VodItem> {
     return { accountId: r.accountId, streamId: r.itemId, name: r.name, poster: r.poster, rating: '', categoryId: '', containerExtension: r.ext };
   }
 
-  protected continueRail(): Safe | '' {
-    return this.resume.length
-      ? this.rail(t('catalog.continueWatching'), this.resume.map((r) => this.tile(this.resumeToVod(r.itemId)!)))
-      : '';
+  protected continueTiles(): Safe[] {
+    return this.resume.map((r) => this.tile(this.resumeToVod(r.itemId)!));
   }
 
-  protected watchlistRail(): Safe | '' {
-    const entries = StorageService.getWatchlist(this.account!.id, 'vod');
-    return entries.length
-      ? this.rail(t('common.watchlist'), entries.map((entry) => this.watchlistTile(entry)))
-      : '';
+  protected watchlistTiles(): Safe[] {
+    return StorageService.getWatchlist(this.account!.id, 'vod').map((entry) => this.watchlistTile(entry));
   }
 
   private watchlistTile(entry: WatchlistEntry): Safe {

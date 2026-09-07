@@ -39,6 +39,15 @@ const vod = (id: string, name: string, categoryId = '1') => ({
   accountId: 'x1', streamId: id, name, poster: '', rating: '', categoryId, containerExtension: 'mp4',
 });
 
+// Hovering a sidebar row and pressing select — the same click/select path a
+// remote or a pointer takes; mirrors selecting a channel group in the Live
+// sidebar's own tests.
+function selectSidebarEntry(container: HTMLElement, view: Movies, id: string): void {
+  const entry = container.querySelector<HTMLElement>(`[data-group="${id}"]`)!;
+  entry.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
+  view.handleAction('select');
+}
+
 let container: HTMLElement;
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -61,41 +70,31 @@ async function openWith(cats = [{ id: '1', name: 'Cat A' }], streams = [vod('10'
   return { view, handlers };
 }
 
-describe('Movies browse + grid', () => {
-  it('renders a rail per preloaded category with poster tiles', async () => {
+describe('Movies sidebar + grid', () => {
+  it('shows categories in the sidebar with the first category selected by default', async () => {
     await openWith([{ id: '1', name: 'Cat A' }], [vod('10', 'Movie One')]);
-    expect(container.querySelector('.catalog-rail-title')?.textContent).toContain('Cat A');
+    expect(container.querySelector('[data-group="1"] .group-name')?.textContent).toContain('Cat A');
+    expect(container.querySelector('[data-group="1"].active')).not.toBeNull();
     expect(container.querySelector('.catalog-tile[data-item-id="10"]')?.textContent).toContain('Movie One');
   });
 
-  it('updates the hero title and backdrop to the focused movie', async () => {
-    const m1 = { accountId: 'x1', streamId: '10', name: 'Movie One', poster: 'http://host/p1.jpg', rating: '', categoryId: '1', containerExtension: 'mp4' };
-    const m2 = { accountId: 'x1', streamId: '11', name: 'Movie Two', poster: 'http://host/p2.jpg', rating: '', categoryId: '1', containerExtension: 'mp4' };
-    await openWith([{ id: '1', name: 'Cat A' }], [m1, m2]);
-    const hero = container.querySelector<HTMLElement>('.catalog-hero')!;
-    const title = () => container.querySelector('.catalog-hero-title')?.textContent;
-
-    container.querySelector('.catalog-tile[data-item-id="11"]')!
-      .dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
-    expect(title()).toBe('Movie Two');
-    expect(hero.style.backgroundImage).toContain('p2.jpg');
-
-    container.querySelector('.catalog-tile[data-item-id="10"]')!
-      .dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
-    expect(title()).toBe('Movie One');
-    expect(hero.style.backgroundImage).toContain('p1.jpg');
-  });
-
-  it('shows a Continue rail from the resume list', async () => {
+  it('selects Continue Watching by default when a resume entry exists', async () => {
     const { StorageService } = await import('../services/storage-service');
     (StorageService.getResumeList as ReturnType<typeof vi.fn>).mockReturnValue([
       { accountId: 'x1', kind: 'vod', itemId: '10', name: 'Movie One', poster: '', ext: 'mp4', position: 100, duration: 6000, updatedAt: 1 },
     ]);
     await openWith();
-    expect(container.textContent).toContain('Continue Watching');
+    expect(container.querySelector('[data-group="__continue__"].active')).not.toBeNull();
+    expect(container.querySelector('.catalog-tile[data-item-id="10"]')?.textContent).toContain('Movie One');
   });
 
-  it('shows a Watchlist rail from stored movie snapshots', async () => {
+  it('always shows the Continue Watching and Watchlist sidebar entries, even when empty', async () => {
+    await openWith();
+    expect(container.querySelector('[data-group="__continue__"]')).not.toBeNull();
+    expect(container.querySelector('[data-group="__watchlist__"]')).not.toBeNull();
+  });
+
+  it('shows the Watchlist entry with stored movie snapshots', async () => {
     watchlistState.entries = [{
       accountId: 'x1', kind: 'vod', itemId: '42', name: 'Saved Movie', poster: '',
       rating: '', categoryId: '9', containerExtension: 'mkv', addedAt: 2,
@@ -105,7 +104,7 @@ describe('Movies browse + grid', () => {
       poster: '', imdbId: '', tmdbId: '', year: 0,
     });
     const { view } = await openWith();
-    expect(container.textContent).toContain('Watchlist');
+    selectSidebarEntry(container, view, '__watchlist__');
     const tile = container.querySelector('.catalog-tile[data-item-id="42"]') as HTMLElement;
     expect(tile.textContent).toContain('Saved Movie');
     tile.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
@@ -114,7 +113,7 @@ describe('Movies browse + grid', () => {
     expect(container.querySelector('.movies-detail')?.textContent).toContain('Saved Movie');
   });
 
-  it('queues only the movies after one launched from the Watchlist rail', async () => {
+  it('queues only the movies after one launched from the Watchlist entry', async () => {
     watchlistState.entries = [
       {
         accountId: 'x1', kind: 'vod', itemId: '42', name: 'Saved Movie One', poster: '',
@@ -130,6 +129,7 @@ describe('Movies browse + grid', () => {
       poster: '', imdbId: '', tmdbId: '', year: 0,
     });
     const { view, handlers } = await openWith();
+    selectSidebarEntry(container, view, '__watchlist__');
     const tile = container.querySelector('[data-watchlist-item="42"]') as HTMLElement;
     tile.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
     view.handleAction('select');
@@ -155,22 +155,16 @@ describe('Movies browse + grid', () => {
     expect(handlers.onRevealTabBar).toHaveBeenCalled();
   });
 
-  it('drills into a non-rail category grid and back to browse', async () => {
-    // 7 categories: the first RAIL_CATEGORIES (6) become poster rails; the 7th
-    // is a non-rail tile in the "All Categories" rail — the drill-in target.
+  it('switches to a category via the sidebar and Back leaves the section', async () => {
     const cats = Array.from({ length: 7 }, (_, i) => ({ id: String(i + 1), name: `Cat ${i + 1}` }));
     const { view, handlers } = await openWith(cats, [vod('10', 'Movie One')]);
-    const cat = container.querySelector('.catalog-cat[data-category-id="7"]') as HTMLElement;
-    expect(cat).not.toBeNull();
-    cat.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
     catalogMock.loadVodStreams.mockResolvedValue([vod('20', 'Movie Two', '7')]);
-    view.handleAction('select');
+    selectSidebarEntry(container, view, '7');
     await Promise.resolve(); await Promise.resolve();
-    expect(container.querySelector('.catalog-grid')).not.toBeNull();
+    expect(container.querySelector('[data-group="7"].active')).not.toBeNull();
     expect(container.querySelector('.catalog-tile[data-item-id="20"]')).not.toBeNull();
     view.handleAction('back');
-    expect(container.querySelector('.catalog-browse')).not.toBeNull();
-    expect(handlers.onBack).not.toHaveBeenCalled();
+    expect(handlers.onBack).toHaveBeenCalled();
   });
 
   it('virtualizes 50,000 categories and a 50,000-item grid', async () => {
@@ -180,69 +174,53 @@ describe('Movies browse + grid', () => {
     );
     const streams = Array.from(
       { length: 50_000 },
-      (_, i) => vod(String(i), `Movie ${String(i)}`, '7'),
+      (_, i) => vod(String(i), `Movie ${String(i)}`, '1'),
     );
-    const { view } = await openWith(cats, streams);
+    await openWith(cats, streams);
 
-    expect(container.querySelectorAll('.catalog-category-rail-cell').length).toBeLessThan(20);
-    expect(container.querySelector<HTMLElement>('.catalog-category-rail-spacer')?.style.width)
-      .toBe(`${String((50_000 - 6) * 320)}px`);
+    // Sidebar virtualization: 2 pinned entries + 50,000 categories, far fewer rendered.
+    expect(container.querySelectorAll('.group-item').length).toBeLessThan(60);
 
-    const category = container.querySelector<HTMLElement>(
-      '.catalog-cat[data-category-id="7"]',
-    )!;
-    category.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
-    view.handleAction('select');
-    await Promise.resolve();
-    await Promise.resolve();
-
+    // Category '1' (the default selection) already carries the 50,000-item grid.
     expect(container.querySelectorAll('.catalog-grid-cell').length).toBeLessThan(60);
     expect(container.querySelector<HTMLElement>('.catalog-grid-track')?.style.height)
       .toBe('2821485px');
   });
 
   it('snaps free grid scrolling to the nearest row after it stops', async () => {
-    const cats = Array.from(
-      { length: 7 },
-      (_, index) => ({ id: String(index + 1), name: `Cat ${String(index + 1)}` }),
-    );
     const streams = Array.from(
       { length: 50 },
-      (_, index) => vod(String(index), `Movie ${String(index)}`, '7'),
+      (_, index) => vod(String(index), `Movie ${String(index)}`, '1'),
     );
-    const { view } = await openWith(cats, streams);
-    const category = container.querySelector<HTMLElement>(
-      '.catalog-cat[data-category-id="7"]',
-    )!;
-    category.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
-    view.handleAction('select');
-    await Promise.resolve();
-    await Promise.resolve();
+    const { view } = await openWith([{ id: '1', name: 'Cat A' }], streams);
+    // Any grid-mode select on the already-active category is a no-op; the grid
+    // is already showing the 50-item set from the default open() selection.
+    void view;
 
     vi.useFakeTimers();
     try {
-      const grid = container.querySelector<HTMLElement>('.catalog-grid')!;
+      const main = container.querySelector<HTMLElement>('.catalog-main')!;
       const track = container.querySelector<HTMLElement>('.catalog-grid-track')!;
-      Object.defineProperty(grid, 'clientHeight', { value: 900, configurable: true });
-      grid.getBoundingClientRect = () => ({ top: 0 } as DOMRect);
-      track.getBoundingClientRect = () => ({ top: 126 - grid.scrollTop } as DOMRect);
-      grid.scrollTop = 577;
-      grid.dispatchEvent(new Event('scroll', { bubbles: true }));
+      Object.defineProperty(main, 'clientHeight', { value: 900, configurable: true });
+      main.getBoundingClientRect = () => ({ top: 0 } as DOMRect);
+      track.getBoundingClientRect = () => ({ top: 126 - main.scrollTop } as DOMRect);
+      main.scrollTop = 577;
+      main.dispatchEvent(new Event('scroll', { bubbles: true }));
       vi.advanceTimersByTime(100);
 
-      expect(grid.scrollTop).toBe(521);
+      expect(main.scrollTop).toBe(521);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('goes back to Live from the browse top level', async () => {
+  it('goes back to Live from the grid view', async () => {
     const { view, handlers } = await openWith();
     view.handleAction('back');
     expect(handlers.onBack).toHaveBeenCalled();
   });
 
-  it('refreshes the Continue rail from storage on each browse render', async () => {
+  it('refreshes the Continue Watching entry from storage after returning from detail', async () => {
     const { StorageService } = await import('../services/storage-service');
     const getResumeList = StorageService.getResumeList as ReturnType<typeof vi.fn>;
     getResumeList.mockReturnValue([]);
@@ -250,19 +228,23 @@ describe('Movies browse + grid', () => {
       plot: '', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '', imdbId: '', tmdbId: '', year: 0,
     });
     const { view } = await openWith();
-    expect(container.textContent).not.toContain('Continue Watching');
+    selectSidebarEntry(container, view, '__continue__');
+    expect(container.querySelector('.catalog-tile[data-item-id="10"]')).toBeNull();
+    selectSidebarEntry(container, view, '1');
 
-    // A movie is watched, so a resume entry now exists; walking detail -> browse
-    // should surface it without re-entering the section.
-    getResumeList.mockReturnValue([
-      { accountId: 'x1', kind: 'vod', itemId: '10', name: 'Movie One', poster: '', ext: 'mp4', position: 100, duration: 6000, updatedAt: 1 },
-    ]);
     const tile = container.querySelector('.catalog-tile[data-item-id="10"]') as HTMLElement;
     tile.dispatchEvent(new CustomEvent('nav:hover', { bubbles: true }));
     view.handleAction('select');
     await Promise.resolve(); await Promise.resolve();
-    view.handleAction('back'); // detail -> browse re-render
-    expect(container.textContent).toContain('Continue Watching');
+
+    // A movie is watched, so a resume entry now exists; walking detail -> grid
+    // should surface it without re-entering the section.
+    getResumeList.mockReturnValue([
+      { accountId: 'x1', kind: 'vod', itemId: '10', name: 'Movie One', poster: '', ext: 'mp4', position: 100, duration: 6000, updatedAt: 1 },
+    ]);
+    view.handleAction('back'); // detail -> grid re-render, refreshing Continue Watching
+    selectSidebarEntry(container, view, '__continue__');
+    expect(container.querySelector('.catalog-tile[data-item-id="10"]')).not.toBeNull();
   });
 });
 
@@ -359,7 +341,7 @@ describe('Movies detail', () => {
     expect(container.querySelector('[data-action="resume"]')).not.toBeNull();
   });
 
-  it('backs out of detail to the browse view', async () => {
+  it('backs out of detail to the grid view', async () => {
     catalogMock.loadVodInfo.mockResolvedValue({ plot: '', cast: '', director: '', genre: '', releaseDate: '', durationSecs: 0, poster: '', imdbId: '', tmdbId: '', year: 0 });
     const { view, handlers } = await openWith();
     const tile = container.querySelector('.catalog-tile[data-item-id="10"]') as HTMLElement;
@@ -367,7 +349,7 @@ describe('Movies detail', () => {
     view.handleAction('select');
     await Promise.resolve(); await Promise.resolve();
     view.handleAction('back');
-    expect(container.querySelector('.catalog-browse')).not.toBeNull();
+    expect(container.querySelector('.catalog-view.catalog-grid')).not.toBeNull();
     expect(handlers.onBack).not.toHaveBeenCalled();
   });
 
@@ -419,8 +401,8 @@ describe('Movies deep-link (openItem)', () => {
     await view.openItem(account, vod('42', 'Deep Movie', '9'), onDetailBack);
     expect(container.querySelector('.movies-detail')).not.toBeNull();
     expect(container.textContent).toContain('Deep Movie');
-    // No browse is loaded underneath; Back returns to Search via the callback.
-    expect(container.querySelector('.catalog-browse')).toBeNull();
+    // No grid is loaded underneath; Back returns to Search via the callback.
+    expect(container.querySelector('.catalog-view.catalog-grid')).toBeNull();
     view.handleAction('back');
     expect(onDetailBack).toHaveBeenCalledTimes(1);
     expect(handlers.onBack).not.toHaveBeenCalled(); // did not fall through to Live
@@ -428,7 +410,7 @@ describe('Movies deep-link (openItem)', () => {
 });
 
 describe('Movies account-switch race', () => {
-  it('a superseded a1 open() cannot clobber a2 rails (account-switch race)', async () => {
+  it('a superseded a1 open() cannot clobber a2 categories (account-switch race)', async () => {
     const a1: PlaylistEntry = { id: 'a1', name: 'A1', url: 'http://host/a', source: 'xtream', xtream: { username: 'u1', password: 'p1' } };
     const a2: PlaylistEntry = { id: 'a2', name: 'A2', url: 'http://host/a', source: 'xtream', xtream: { username: 'u2', password: 'p2' } };
 
