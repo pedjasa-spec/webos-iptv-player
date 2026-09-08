@@ -9,7 +9,7 @@ downloaded data that can be recreated.
 | Data | Examples | Where it is kept | Removed by Clear Cache? |
 | --- | --- | --- | --- |
 | Setup and preferences | Playlist and EPG sources, Xtream account details, theme, language, text size, time zone, active account and channel | Small app-private browser storage | No |
-| Personal data | Favorites, reminders, channel order and names, hidden channels, favorited channel groups and catalog categories, Watchlist, Recently Watched, playback progress, audio and subtitle choices | App-private database on the TV | No |
+| Personal data | Favorites, reminders, channel order and names, hidden channels, favorited channel groups and catalog categories, user-created channel folders, Watchlist, Recently Watched, playback progress, audio and subtitle choices | App-private database on the TV | No |
 | Downloaded cache | Parsed playlists, program guides, movie and series catalogs, media metadata, downloaded subtitles, channel health results | App-private database on the TV | Yes |
 | LAN-uploaded playlists | Original M3U files uploaded from another device | Private storage owned by the bundled upload service | No |
 
@@ -121,9 +121,10 @@ origin, so object-store names do not repeat the `iptv_` prefix.
 | --- | --- | --- | --- |
 | `favorites` | `favorite:<channel-key>` | None | Stable channel keys |
 | `reminders` | `reminder:<channel-key>\|<start-ms>` | None | Channel key/name, EPG source URL, program title, start/stop milliseconds, answered flag; `updatedAt` is the start time |
-| `channel-state` | `custom:meta` | None | Customization version, channel/group order, favorited group keys (mark-order), and user-created group keys |
-| `channel-state` | `custom:channel:<channel-key>` | None | Optional renamed display name, destination group, and hidden flag |
+| `channel-state` | `custom:meta` | None | Customization version, channel/group order, favorited group keys (mark-order), user-created group keys, user-created folder keys, and a one-time folder-migration flag |
+| `channel-state` | `custom:channel:<channel-key>` | None | Optional renamed display name, destination group (moves the channel out of its source group), folder assignment (additive — the channel stays visible in its group too; at most one folder), and hidden flag |
 | `channel-state` | `custom:group:<group-key>` | None | Optional renamed group name and hidden flag |
+| `channel-state` | `custom:folder:<folder-key>` | None | Optional renamed folder name — a separate namespace from `custom:group:`, so a folder and a real group of the same name never share state |
 | `channel-state` | `audio:<channel-key>` | None | Preferred audio rendition name and language |
 | `channel-state` | `subtitle:<channel-key>` | None | Explicit off state or preferred subtitle name/language/CC mode |
 | `channel-state` | `offset:<channel-key>` | None | Subtitle timing adjustment in seconds |
