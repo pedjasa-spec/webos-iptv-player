@@ -118,6 +118,9 @@ export const CONFIG = {
     YELLOW: 405,
     BLUE: 406,
     F: 70, // desktop-only alias for Green (403-406 aren't real PC keyboard keys)
+    R: 82, // desktop-only alias for Red
+    Y: 89, // desktop-only alias for Yellow
+    B: 66, // desktop-only alias for Blue
     CH_UP: 33,
     CH_DOWN: 34,
     PLAY: 415,

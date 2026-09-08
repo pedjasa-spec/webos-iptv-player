@@ -20,6 +20,9 @@ const ACTION_MAP: Record<number, Action> = {
   [K.YELLOW]: 'yellow',
   [K.BLUE]: 'blue',
   [K.F]: 'green', // desktop keyboard: no physical key sends 403-406
+  [K.R]: 'red',
+  [K.Y]: 'yellow',
+  [K.B]: 'blue',
   [K.CH_UP]: 'channel_up',
   [K.CH_DOWN]: 'channel_down',
   [K.PLAY]: 'play',

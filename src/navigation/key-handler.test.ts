@@ -57,6 +57,9 @@ describe('KeyHandler', () => {
       [K.YELLOW, 'yellow'],
       [K.BLUE, 'blue'],
       [K.F, 'green'], // desktop keyboard alias — no physical key sends 403-406
+      [K.R, 'red'],
+      [K.Y, 'yellow'],
+      [K.B, 'blue'],
       [K.CH_UP, 'channel_up'],
       [K.CH_DOWN, 'channel_down'],
       [K.PLAY, 'play'],
@@ -84,12 +87,15 @@ describe('KeyHandler', () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
-    // F is a desktop-only convenience alias, not a real remote button — typing
-    // "f" into the sidebar search box must type the letter, not toggle a favorite.
-    it('keeps the F favorite-alias with a focused input (no app action)', () => {
+    // F/R/Y/B are desktop-only convenience aliases, not real remote buttons —
+    // typing them into the sidebar search box must type the letter, not fire
+    // a color-key action.
+    it.each([
+      [K.F], [K.R], [K.Y], [K.B],
+    ])('keeps color-key alias %i with a focused input (no app action)', (keyCode) => {
       const input = document.createElement('input');
       document.body.appendChild(input);
-      press(K.F, input);
+      press(keyCode, input);
       expect(handler).not.toHaveBeenCalled();
     });
 

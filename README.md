@@ -267,9 +267,11 @@ Settings, and Reminder Manager use plain D-pad navigation with no color-key
 actions. **Back** returns to the previous view everywhere.
 
 On a physical remote, Red/Green/Yellow/Blue send dedicated color-button codes
-that a normal PC keyboard cannot produce, so pressing **F** in the desktop
-preview is a keyboard-only alias for Green (favorite/toggle), letting you test
-that action without a real remote or the browser console.
+that a normal PC keyboard cannot produce, so the desktop preview maps each one
+to a keyboard-only letter alias — **R**ed, **F** for Green, **Y**ellow, and
+**B**lue — letting you test any color-key action without a real remote or the
+browser console. These aliases do nothing while a text field is focused, so
+typing them into the sidebar search box still types the letter.
 
 ## Docs
 
