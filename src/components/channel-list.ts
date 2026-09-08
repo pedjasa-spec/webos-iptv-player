@@ -233,12 +233,13 @@ export class ChannelList {
         <div class="sidebar" data-nav-container>
           <div class="sidebar-header">
             <div class="channel-count">${tp('channel.count', totalChannels)}</div>
-            ${editing || showingRecent
+            ${editing
               ? html`<div class="channel-edit-btn-spacer" aria-hidden="true"></div>`
               : html`
-                <button class="channel-edit-btn"
+                <button class="channel-edit-btn ${showingRecent ? 'disabled' : ''}"
                         data-key="edit-channels"
-                        data-focusable data-edit-channels
+                        ${showingRecent ? '' : raw('data-focusable data-edit-channels')}
+                        aria-disabled="${showingRecent ? 'true' : 'false'}"
                         aria-label="${t('settings.editChannelList')}"
                         title="${t('settings.editChannelList')}"><img src="assets/icons/pencil.svg" alt=""></button>
               `}

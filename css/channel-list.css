@@ -49,6 +49,11 @@
   background: var(--bg-tertiary);
 }
 
+.channel-edit-btn.disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 .channel-edit-btn img {
   display: block;
   width: 100%;

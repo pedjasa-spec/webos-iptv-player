@@ -458,12 +458,16 @@ describe('ChannelList.render', () => {
     expect(container.querySelector('.empty-state')?.textContent).toBe('Nothing watched yet');
   });
 
-  it('disables channel editing in Recently Watched', () => {
+  it('shows the pencil disabled (not hidden) in Recently Watched', () => {
     list.render();
     hover(container.querySelector<HTMLElement>('[data-group="builtin:recently-watched"]')!);
     list.handleAction('select');
-    expect(container.querySelector('.channel-edit-btn')).toBeNull();
-    expect(container.querySelector('.channel-edit-btn-spacer')).not.toBeNull();
+    const btn = container.querySelector('.channel-edit-btn');
+    expect(btn).not.toBeNull();
+    expect(btn?.classList.contains('disabled')).toBe(true);
+    expect(btn?.getAttribute('aria-disabled')).toBe('true');
+    expect(btn?.hasAttribute('data-focusable')).toBe(false);
+    expect(container.querySelector('.channel-edit-btn-spacer')).toBeNull();
     list.handleAction('yellow');
     expect(list.isEditing).toBe(false);
     expect(container.querySelector('.edit-hints')).toBeNull();
