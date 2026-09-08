@@ -162,7 +162,12 @@ export class ChannelList {
     if (this.currentPlaylist && !tabs.some(t => t.id === this.currentPlaylist)) this.currentPlaylist = '';
     const showTabs = tabs.length > 1;
     const groups = this.getGroupEntries();
-    if (!groups.some(group => group.id === this.currentGroup)) this.currentGroup = 'builtin:all';
+    // Folders aren't real (source) groups, so they never appear in `groups` —
+    // check them separately instead of falling back to All every render.
+    const isValidGroup = groups.some(group => group.id === this.currentGroup)
+      || (this.currentGroup.indexOf('folder:') === 0
+        && ChannelCustomizationService.customFolders.includes(this.currentGroup.slice('folder:'.length)));
+    if (!isValidGroup) this.currentGroup = 'builtin:all';
     if (ensureFocus || this.recentItems.length === 0) {
       this.recentItems = RecentlyWatchedService.getItems(this.currentPlaylist || undefined);
     }
@@ -459,23 +464,25 @@ export class ChannelList {
       };
     });
 
-    // Folders (user-created groups) get their own band above favorited/other
-    // groups: Favorites/Recently Watched, then folders (creation order — no
-    // manual reorder yet, same call as favorite-group order), then favorited
-    // groups, then the rest.
-    const folderRank = new Map(
-      ChannelCustomizationService.customGroups.map((key, index) => [key, index]),
-    );
-    const pinned: SidebarEntry[] = [];
-    const folders: SidebarEntry[] = [];
-    const rest: SidebarEntry[] = [];
-    for (const entry of entries) {
-      if (!entry.favoritable) pinned.push(entry);
-      else if (entry.favoriteKey !== undefined && folderRank.has(entry.favoriteKey)) {
-        folders.push(entry);
-      } else rest.push(entry);
-    }
-    folders.sort((a, b) => folderRank.get(a.favoriteKey!)! - folderRank.get(b.favoriteKey!)!);
+    // Folders get their own band above favorited/other groups: Favorites/
+    // Recently Watched, then folders (creation order — no manual reorder
+    // yet), then favorited groups, then the rest. Folders are a separate,
+    // additive overlay (see types.ts) — never part of `groups` above.
+    const folders: SidebarEntry[] = ChannelCustomizationService.customFolders.map((key) => {
+      const id = `folder:${key}` as ChannelGroupId;
+      const label = groupDisplayLabel(ChannelCustomizationService.folderLabel(key));
+      return {
+        id,
+        label,
+        count: PlaylistService.getGroupCount(id, this.currentPlaylist || undefined),
+        icon: raw(groupIcon(label)),
+        grabbed: this.editor.isFolderGrabbed(key),
+        renaming: this.editor.isFolderRenaming(key),
+      };
+    });
+
+    const pinned: SidebarEntry[] = entries.filter((entry) => !entry.favoritable);
+    const rest: SidebarEntry[] = entries.filter((entry) => entry.favoritable);
 
     return [...pinned, ...folders, ...applyFavoriteOrder(rest, ChannelCustomizationService.favoriteGroups)];
   }

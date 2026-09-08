@@ -109,6 +109,11 @@ playlistMock.getByGroup = (group: string, playlist?: string): Channel[] => {
   if (group === 'builtin:favorites') {
     return channels.filter(channel => data.favorites.includes(channelKey(channel)));
   }
+  if (group.indexOf('folder:') === 0) {
+    const folderKey = group.slice('folder:'.length);
+    return channels.filter(channel =>
+      ChannelCustomizationService.folderFor(channelKey(channel)) === folderKey);
+  }
   return channels.filter(channel => channel.group === group.slice('source:'.length));
 };
 
@@ -712,14 +717,15 @@ describe('ChannelList interaction', () => {
   });
 
   it('bands folders above favorited groups, which stay above the rest', () => {
-    ChannelCustomizationService.setGroup(channelKey(data.channels[0]), 'Custom');
+    ChannelCustomizationService.assignFolder(channelKey(data.channels[0]), 'Kids');
     playlistMock.applyCustomization();
     ChannelCustomizationService.toggleGroupFavorite('Sports');
     list.render();
 
-    const groups = Array.from(container.querySelectorAll<HTMLElement>('[data-group^="source:"]'))
-      .map(g => g.dataset.group);
-    expect(groups).toEqual(['source:Custom', 'source:Sports', 'source:News']);
+    const rows = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-group^="source:"], [data-group^="folder:"]'),
+    ).map(g => g.dataset.group);
+    expect(rows).toEqual(['folder:Kids', 'source:Sports', 'source:News']);
   });
 
   it('keeps focus on a group favorited far outside the rendered window', () => {

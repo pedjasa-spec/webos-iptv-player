@@ -433,6 +433,109 @@ test('red can place a channel in a new custom group', async ({ page }) => {
   await expect(page.locator('.channel-main')).toContainText('Alpha News');
 });
 
+test('red assigns a channel to a new folder without moving it out of its group', async ({ page }) => {
+  await boot(page);
+  await key(page, YELLOW);
+  await focusChannel(page, 0);
+  await key(page, ENTER);
+
+  await key(page, RED);
+  await expect(page.locator('.group-picker')).toBeVisible();
+  const titles = await page.locator('.group-picker-title').allInnerTexts();
+  expect(titles).toEqual(['Folder', 'Move to group']);
+  // Folder is first and its first row starts focused, no scrolling needed.
+  await expect(page.locator('.group-picker-option[data-folder-choice="new"]'))
+    .toHaveClass(/focused/);
+  await page.locator('.group-picker-option[data-folder-choice="new"]').hover();
+  await key(page, ENTER);
+  await page.locator('.edit-text-input').fill('Kids');
+  await key(page, ENTER);
+  await expect(page.locator('.group-picker')).toHaveCount(0);
+
+  // Still under its real (source) group — a folder is additive, not a move.
+  await key(page, YELLOW);
+  await page.locator('[data-group="source:News"]').click();
+  const inNews = await names(page);
+  expect(inNews.length).toBeGreaterThan(0);
+
+  // Re-opening the picker on the same channel now offers "Remove from folder".
+  await key(page, YELLOW);
+  await focusChannel(page, 0);
+  await key(page, ENTER);
+  await key(page, RED);
+  await expect(page.locator('.group-picker-option[data-folder-choice="remove"]')).toBeVisible();
+});
+
+test('a folder appears as its own sidebar row, right below Recently Watched', async ({ page }) => {
+  await boot(page);
+  await key(page, YELLOW);
+  await focusChannel(page, 0);
+  await key(page, ENTER);
+  await key(page, RED);
+  await page.locator('.group-picker-option[data-folder-choice="new"]').hover();
+  await key(page, ENTER);
+  await page.locator('.edit-text-input').fill('Kids');
+  await key(page, ENTER);
+  await key(page, YELLOW);
+
+  const rows = await page.locator('.group-item[data-group]').evaluateAll(
+    (els) => els.map((el) => el.getAttribute('data-group')),
+  );
+  expect(rows).toEqual([
+    'builtin:all',
+    'builtin:favorites',
+    'builtin:recently-watched',
+    'folder:Kids',
+    'source:News',
+    'source:Entertainment',
+    'source:Sports',
+  ]);
+
+  // Selecting the folder filters to its member; the channel is still under
+  // its real (source) group too — verified in the assignment test above.
+  await page.locator('[data-group="folder:Kids"]').click();
+  expect(await names(page)).toEqual(['Alpha News']);
+});
+
+test('rename and delete a folder from its sidebar row', async ({ page }) => {
+  await boot(page);
+  await key(page, YELLOW);
+  await focusChannel(page, 0);
+  await key(page, ENTER);
+  await key(page, RED);
+  await page.locator('.group-picker-option[data-folder-choice="new"]').hover();
+  await key(page, ENTER);
+  await page.locator('.edit-text-input').fill('Kids');
+  await key(page, ENTER);
+
+  // Rename via the sidebar row, same as a real group — the row keeps its
+  // stable key (folder:Kids), unlike a real group whose id embeds the
+  // display name; only the label changes.
+  await page.locator('[data-group="folder:Kids"]').hover();
+  await key(page, ENTER); // grab
+  await key(page, BLUE);
+  await page.locator('.edit-text-input').fill('For the kids');
+  await key(page, ENTER);
+  await expect(page.locator('[data-group="folder:Kids"] .group-name')).toHaveText('For the kids');
+
+  // Delete asks for confirmation naming the folder and its channel count;
+  // Back cancels without touching it. Still grabbed from the rename above —
+  // a second OK here would drop it instead.
+  await key(page, RED);
+  await expect(page.locator('.confirmation-title')).toHaveText('Delete "For the kids"?');
+  await expect(page.locator('.confirmation-message')).toContainText('1 channel');
+  await key(page, BACK);
+  await expect(page.locator('[data-group="folder:Kids"]')).toBeVisible();
+
+  // Confirming removes the folder row, but not the channel from its group.
+  await key(page, RED);
+  await page.locator('.confirmation-btn').first().click();
+  await expect(page.locator('[data-group^="folder:"]')).toHaveCount(0);
+  await key(page, YELLOW);
+  await page.locator('[data-group="source:News"]').click();
+  expect(await names(page)).toContain('Alpha News');
+});
+
 test('a group row can be reordered, renamed, and hidden', async ({ page }) => {
   await boot(page);
   await key(page, YELLOW);
