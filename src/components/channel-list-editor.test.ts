@@ -125,6 +125,11 @@ playlistMock.getByGroup = (group: string, playlist?: string): Channel[] => {
   if (group === 'builtin:favorites') {
     return channels.filter(channel => data.favorites.includes(channelKey(channel)));
   }
+  if (group.indexOf('folder:') === 0) {
+    const folderKey = group.slice('folder:'.length);
+    return channels.filter(channel =>
+      ChannelCustomizationService.folderFor(channelKey(channel)) === folderKey);
+  }
   return channels.filter(channel => channel.group === group.slice('source:'.length));
 };
 playlistMock.getGroupCount = (group: string, playlist?: string): number =>
@@ -1011,6 +1016,109 @@ describe('ChannelList edit mode', () => {
     expect(data.raw[0].sourceGroup).toBeUndefined();
   });
 
+  it('shows Folder first (used far more often), then Move to group, with New folder…', () => {
+    enterEdit();
+    hover(channelItems()[0]);
+    list.handleAction('select');
+    list.handleAction('red');
+    const titles = Array.from(container.querySelectorAll('.group-picker-title')).map(el => el.textContent);
+    expect(titles).toEqual(['Folder', 'Move to group']);
+    const folderNew = Array.from(container.querySelectorAll<HTMLElement>('.group-picker-option'))
+      .find(el => el.dataset.folderChoice === 'new');
+    expect(folderNew?.textContent).toBe('New folder…');
+    // Not yet in any folder, so there's nothing to remove from — the picker
+    // opens focused straight on "New folder…", no scrolling needed.
+    expect(container.querySelector('[data-folder-choice="remove"]')).toBeNull();
+    expect(folderNew?.classList.contains('focused')).toBe(true);
+  });
+
+  it('opens the picker focused on the first Folder row when one is already assigned', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    playlistMock.applyCustomization();
+    enterEdit();
+    hover(channelItems()[0]);
+    list.handleAction('select');
+    list.handleAction('red');
+    const remove = container.querySelector<HTMLElement>('[data-folder-choice="remove"]');
+    expect(remove?.classList.contains('focused')).toBe(true);
+  });
+
+  it('red assigns the focused channel to a new folder without moving its group', () => {
+    enterEdit();
+    hover(channelItems()[0]);
+    list.handleAction('select');
+    list.handleAction('red');
+    const newFolder = Array.from(container.querySelectorAll<HTMLElement>('.group-picker-option'))
+      .find(el => el.dataset.folderChoice === 'new');
+    hover(newFolder!);
+    list.handleAction('select');
+    container.querySelector<HTMLInputElement>('.edit-text-input')!.value = 'Kids';
+    list.handleAction('select');
+
+    const key = channelKey(data.raw[0]);
+    expect(ChannelCustomizationService.folderFor(key)).toBe('Kids');
+    expect(ChannelCustomizationService.customFolders).toEqual(['Kids']);
+    // Still under its real (source) group — folders are additive, not a move.
+    expect(data.raw[0].group).toBe('News');
+    expect(ChannelCustomizationService.customGroups).toEqual([]);
+    expect(container.querySelector('.group-picker')).toBeNull();
+  });
+
+  it('red assigns the focused channel to an existing folder', () => {
+    ChannelCustomizationService.addCustomFolder('Kids');
+    enterEdit();
+    hover(channelItems()[0]);
+    list.handleAction('select');
+    list.handleAction('red');
+    const kids = Array.from(container.querySelectorAll<HTMLElement>('.group-picker-option'))
+      .find(el => el.dataset.folderChoice === 'Kids');
+    expect(kids).toBeDefined();
+    hover(kids!);
+    list.handleAction('select');
+    expect(ChannelCustomizationService.folderFor(channelKey(data.raw[0]))).toBe('Kids');
+  });
+
+  it('offers Remove from folder once assigned, and removing it leaves the group untouched', () => {
+    const key = channelKey(data.raw[0]);
+    ChannelCustomizationService.setGroup(key, 'Sports');
+    ChannelCustomizationService.assignFolder(key, 'Kids');
+    playlistMock.applyCustomization();
+    enterEdit();
+    hover(channelItems()[0]);
+    list.handleAction('select');
+    list.handleAction('red');
+
+    const remove = container.querySelector<HTMLElement>('[data-folder-choice="remove"]');
+    expect(remove).not.toBeNull();
+    hover(remove!);
+    list.handleAction('select');
+
+    expect(ChannelCustomizationService.folderFor(key)).toBeUndefined();
+    // The unrelated group reassignment survives the folder removal.
+    expect(ChannelCustomizationService.overrideFor(key)?.group).toBe('Sports');
+  });
+
+  it('keeps new-folder input open when its name already exists', () => {
+    ChannelCustomizationService.addCustomFolder('Kids');
+    enterEdit();
+    hover(channelItems()[0]);
+    list.handleAction('select');
+    list.handleAction('red');
+    const newFolder = Array.from(container.querySelectorAll<HTMLElement>('.group-picker-option'))
+      .find(el => el.dataset.folderChoice === 'new');
+    hover(newFolder!);
+    list.handleAction('select');
+    container.querySelector<HTMLInputElement>('.edit-text-input')!.value = 'kids';
+
+    list.handleAction('select');
+
+    expect(container.querySelector('.edit-text-input')).not.toBeNull();
+    expect(ChannelCustomizationService.folderFor(channelKey(data.raw[0]))).toBeUndefined();
+    expect(toastMock.showToast).toHaveBeenLastCalledWith(
+      'A folder with that name already exists.',
+    );
+  });
+
   it('reorders a grabbed source group', () => {
     enterEdit();
     const sports = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
@@ -1061,19 +1169,22 @@ describe('ChannelList edit mode', () => {
     expect(ChannelCustomizationService.groupLabel('News')).toBe('Headlines');
   });
 
-  function grabFolder(): void {
+  // "Custom" here is a real group created via the ordinary "move to group"
+  // feature (setGroup), independent of folders — see the actual folder
+  // sidebar-row tests below for the new feature.
+  function grabCustomGroup(): void {
     ChannelCustomizationService.setGroup(channelKey(data.raw[0]), 'Custom');
     ChannelCustomizationService.setGroup(channelKey(data.raw[2]), 'Custom');
     playlistMock.applyCustomization();
     enterEdit();
-    const folder = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
+    const group = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
       .find(el => el.dataset.group === 'source:Custom');
-    hover(folder!);
+    hover(group!);
     list.handleAction('select');
   }
 
-  it('red on a grabbed folder asks for confirmation, naming it and its channel count', () => {
-    grabFolder();
+  it('red on a grabbed custom group asks for confirmation, naming it and its channel count', () => {
+    grabCustomGroup();
     list.handleAction('red');
     expect(document.querySelector('.confirmation-title')?.textContent).toBe('Delete "Custom"?');
     expect(document.querySelector('.confirmation-message')?.textContent).toContain('2 channels');
@@ -1081,8 +1192,8 @@ describe('ChannelList edit mode', () => {
     expect(ChannelCustomizationService.customGroups).toEqual(['Custom']);
   });
 
-  it('confirming deletes the folder and its channels fall back to their source group', () => {
-    grabFolder();
+  it('confirming deletes the custom group and its channels fall back to their source group', () => {
+    grabCustomGroup();
     list.handleAction('red');
     list.handleAction('left'); // focus the destructive "Delete" button
     list.handleAction('select');
@@ -1094,8 +1205,8 @@ describe('ChannelList edit mode', () => {
     expect(container.querySelector('[data-group="source:Custom"]')).toBeNull();
   });
 
-  it('cancelling (Back) keeps the folder and its channels intact', () => {
-    grabFolder();
+  it('cancelling (Back) keeps the custom group and its channels intact', () => {
+    grabCustomGroup();
     list.handleAction('red');
     expect(list.handleBack()).toBe(true);
 
@@ -1116,22 +1227,147 @@ describe('ChannelList edit mode', () => {
     expect(container.querySelector('.group-picker')).toBeNull();
   });
 
-  it('the Red hint reads Delete for a grabbed folder and Group otherwise', () => {
+  it('the Red hint reads Delete for a grabbed custom group and Group otherwise', () => {
     ChannelCustomizationService.setGroup(channelKey(data.raw[0]), 'Custom');
     playlistMock.applyCustomization();
     enterEdit();
     const hint = () => container.querySelector('[data-edit-action="red"]')?.textContent?.trim();
 
-    const folder = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
+    const group = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
       .find(el => el.dataset.group === 'source:Custom');
-    hover(folder!);
+    hover(group!);
     list.handleAction('select');
     expect(hint()).toBe('Delete');
 
-    list.handleAction('select'); // drop the folder
+    list.handleAction('select'); // drop the group
     hover(channelItems()[0]);
     list.handleAction('select'); // grab a channel instead
     expect(hint()).toBe('Group');
+  });
+
+  // --- Genuine folders (sidebar rows, separate from the group namespace)
+
+  function grabFolderRow(): void {
+    enterEdit();
+    const folder = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
+      .find(el => el.dataset.group === 'folder:Kids');
+    hover(folder!);
+    list.handleAction('select');
+  }
+
+  it('renders folders as their own sidebar rows, above starred groups', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[2]), 'Kids');
+    playlistMock.applyCustomization();
+    list.render();
+
+    const row = container.querySelector<HTMLElement>('[data-group="folder:Kids"]');
+    expect(row).not.toBeNull();
+    expect(row?.querySelector('.group-name')?.textContent).toBe('Kids');
+    expect(row?.querySelector('.group-count')?.textContent).toBe('2');
+    // Alpha/Charlie stay under their real (source) group too — additive.
+    expect(data.raw[0].group).toBe('News');
+    expect(data.raw[2].group).toBe('News');
+  });
+
+  it('selecting a folder row filters to its members without moving them out of their group', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    playlistMock.applyCustomization();
+    list.render();
+    hover(container.querySelector<HTMLElement>('[data-group="folder:Kids"]')!);
+    list.handleAction('select');
+    expect(names()).toEqual(['Alpha']);
+
+    hover(container.querySelector<HTMLElement>('[data-group="source:News"]')!);
+    list.handleAction('select');
+    expect(names()).toEqual(['Alpha', 'Charlie']);
+  });
+
+  it('blue renames a grabbed folder row', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    playlistMock.applyCustomization();
+    grabFolderRow();
+    list.handleAction('blue');
+    container.querySelector<HTMLInputElement>('.edit-text-input')!.value = 'For the kids';
+
+    list.handleAction('select');
+
+    expect(ChannelCustomizationService.folderLabel('Kids')).toBe('For the kids');
+    expect(container.querySelector('[data-group="folder:Kids"] .group-name')?.textContent)
+      .toBe('For the kids');
+  });
+
+  it('red on a grabbed folder asks for confirmation, naming it and its channel count', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[2]), 'Kids');
+    playlistMock.applyCustomization();
+    grabFolderRow();
+    list.handleAction('red');
+    expect(document.querySelector('.confirmation-title')?.textContent).toBe('Delete "Kids"?');
+    expect(document.querySelector('.confirmation-message')?.textContent).toContain('2 channels');
+    expect(ChannelCustomizationService.customFolders).toEqual(['Kids']);
+  });
+
+  it('confirming deletes the folder without touching member channels\' groups', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[2]), 'Kids');
+    playlistMock.applyCustomization();
+    grabFolderRow();
+    list.handleAction('red');
+    list.handleAction('left'); // focus the destructive "Delete" button
+    list.handleAction('select');
+
+    expect(document.querySelector('.confirmation-prompt')?.classList.contains('hidden')).toBe(true);
+    expect(ChannelCustomizationService.customFolders).toEqual([]);
+    expect(data.raw[0].group).toBe('News');
+    expect(data.raw[2].group).toBe('News');
+    expect(container.querySelector('[data-group="folder:Kids"]')).toBeNull();
+  });
+
+  it('cancelling (Back) keeps the folder and its members intact', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    playlistMock.applyCustomization();
+    grabFolderRow();
+    list.handleAction('red');
+    expect(list.handleBack()).toBe(true);
+
+    expect(document.querySelector('.confirmation-prompt')?.classList.contains('hidden')).toBe(true);
+    expect(ChannelCustomizationService.customFolders).toEqual(['Kids']);
+    expect(ChannelCustomizationService.folderFor(channelKey(data.raw[0]))).toBe('Kids');
+    expect(list.isEditing).toBe(true);
+  });
+
+  it('the Red hint reads Delete for a grabbed folder row', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    playlistMock.applyCustomization();
+    const hint = () => container.querySelector('[data-edit-action="red"]')?.textContent?.trim();
+    grabFolderRow();
+    expect(hint()).toBe('Delete');
+  });
+
+  it('green does nothing on a grabbed folder row (hiding is not a folder concept)', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    playlistMock.applyCustomization();
+    grabFolderRow();
+    const callsBefore = playlistMock.applyCustomization.mock.calls.length;
+    list.handleAction('green');
+    expect(playlistMock.applyCustomization.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('falls back to All when the currently viewed folder is deleted', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    playlistMock.applyCustomization();
+    list.render();
+    hover(container.querySelector<HTMLElement>('[data-group="folder:Kids"]')!);
+    list.handleAction('select');
+
+    grabFolderRow();
+    list.handleAction('red');
+    list.handleAction('left');
+    list.handleAction('select');
+
+    expect(container.querySelector<HTMLElement>('.group-item.active')?.dataset.group)
+      .toBe('builtin:all');
   });
 
   it('keeps the stable key when renaming an empty custom group again', () => {

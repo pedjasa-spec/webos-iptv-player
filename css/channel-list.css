@@ -537,6 +537,14 @@
   cursor: pointer;
 }
 
+.group-picker-option.active {
+  color: var(--accent);
+}
+
+.group-picker-title.group-picker-section {
+  margin-top: 20px;
+}
+
 .epg-mapping-picker {
   top: 40px;
   width: 780px;

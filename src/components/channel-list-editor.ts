@@ -22,7 +22,10 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('ChannelEditor');
 
-type EditTarget = { kind: 'channel'; key: string } | { kind: 'group'; key: string };
+type EditTarget =
+  | { kind: 'channel'; key: string }
+  | { kind: 'group'; key: string }
+  | { kind: 'folder'; key: string };
 type DragCandidate = { target: EditTarget; x: number; y: number };
 
 interface ChannelListEditorOptions {
@@ -48,6 +51,7 @@ export class ChannelListEditor {
   private renaming: EditTarget | null = null;
   private groupPickerFor: string | null = null;
   private newGroupOpen = false;
+  private newFolderOpen = false;
   private epgPickerFor: string | null = null;
   private epgOffsetFor: string | null = null;
   private epgQuery = '';
@@ -256,6 +260,7 @@ export class ChannelListEditor {
     this.renaming = null;
     this.groupPickerFor = null;
     this.newGroupOpen = false;
+    this.newFolderOpen = false;
     this.epgPickerFor = null;
     this.epgOffsetFor = null;
     this.epgQuery = '';
@@ -289,8 +294,9 @@ export class ChannelListEditor {
       this.confirmationPrompt.handleAction('back');
       return true;
     }
-    if (this.newGroupOpen) {
+    if (this.newGroupOpen || this.newFolderOpen) {
       this.newGroupOpen = false;
+      this.newFolderOpen = false;
       this.options.render();
       return true;
     }
@@ -436,6 +442,14 @@ export class ChannelListEditor {
     return this.editing && this.renaming?.kind === 'group' && this.renaming.key === key;
   }
 
+  isFolderGrabbed(key: string): boolean {
+    return this.grabbed?.kind === 'folder' && this.grabbed.key === key;
+  }
+
+  isFolderRenaming(key: string): boolean {
+    return this.editing && this.renaming?.kind === 'folder' && this.renaming.key === key;
+  }
+
   isChannelHidden(channel: Channel): boolean {
     return ChannelCustomizationService.isChannelHidden(channel);
   }
@@ -494,26 +508,60 @@ export class ChannelListEditor {
     if (this.epgOffsetFor) return this.renderEpgOffsetPicker();
     if (this.epgPickerFor) return this.renderEpgPicker();
     if (!this.groupPickerFor) return '';
+    if (this.newGroupOpen) {
+      return html`
+        <div class="group-picker" data-nav-container>
+          <div class="group-picker-title">${t('channel.editMoveToGroup')}</div>
+          <input class="edit-text-input" data-key="new-group" type="text"
+                 placeholder="${t('channel.editNewGroupName')}">
+        </div>
+      `;
+    }
+    if (this.newFolderOpen) {
+      return html`
+        <div class="group-picker" data-nav-container>
+          <div class="group-picker-title">${t('channel.editFolder')}</div>
+          <input class="edit-text-input" data-key="new-folder" type="text"
+                 placeholder="${t('channel.editNewFolderName')}">
+        </div>
+      `;
+    }
+    // Folder first: it's the section used far more often, and with a long
+    // group list the "Move to group" section can run well past one screen —
+    // putting Folder second would bury it behind a long scroll every time.
+    const channelKeyToMove = this.groupPickerFor;
+    const currentFolder = ChannelCustomizationService.folderFor(channelKeyToMove);
     return html`
       <div class="group-picker" data-nav-container>
-        <div class="group-picker-title">${t('channel.editMoveToGroup')}</div>
-        ${this.newGroupOpen
-          ? html`<input class="edit-text-input" data-key="new-group" type="text"
-                        placeholder="${t('channel.editNewGroupName')}">`
-          : html`
-            <div class="group-picker-list">
-              <div class="group-picker-option" data-key="gp:source" data-focusable
-                   data-group-choice="source">${t('channel.editSourceGroup')}</div>
-              ${this.editGroupKeys().map(key => html`
-                <div class="group-picker-option" data-key="gp:${key}" data-focusable
-                     data-group-choice="${key}">${
-                       groupDisplayLabel(ChannelCustomizationService.groupLabel(key))
-                     }</div>
-              `)}
-              <div class="group-picker-option" data-key="gp:new" data-focusable
-                   data-group-choice="new">${t('channel.editNewGroup')}</div>
-            </div>
-          `}
+        <div class="group-picker-title">${t('channel.editFolder')}</div>
+        <div class="group-picker-list">
+          ${currentFolder ? html`
+            <div class="group-picker-option" data-key="fp:remove" data-focusable
+                 data-folder-choice="remove">${t('channel.editRemoveFromFolder')}</div>
+          ` : ''}
+          ${ChannelCustomizationService.customFolders.map(key => html`
+            <div class="group-picker-option ${key === currentFolder ? 'active' : ''}"
+                 data-key="fp:${key}" data-focusable
+                 data-folder-choice="${key}">${
+                   groupDisplayLabel(ChannelCustomizationService.folderLabel(key))
+                 }</div>
+          `)}
+          <div class="group-picker-option" data-key="fp:new" data-focusable
+               data-folder-choice="new">${t('channel.editNewFolder')}</div>
+        </div>
+        <div class="group-picker-title group-picker-section">${t('channel.editMoveToGroup')}</div>
+        <div class="group-picker-list">
+          <div class="group-picker-option" data-key="gp:source" data-focusable
+               data-group-choice="source">${t('channel.editSourceGroup')}</div>
+          ${this.editGroupKeys().map(key => html`
+            <div class="group-picker-option" data-key="gp:${key}" data-focusable
+                 data-group-choice="${key}">${
+                   groupDisplayLabel(ChannelCustomizationService.groupLabel(key))
+                 }</div>
+          `)}
+          <div class="group-picker-option" data-key="gp:new" data-focusable
+               data-group-choice="new">${t('channel.editNewGroup')}</div>
+        </div>
       </div>
     `;
   }
@@ -531,14 +579,17 @@ export class ChannelListEditor {
 
   private handleEditAction(action: Action): boolean {
     // The inline field owns typing; select commits, back cancels via handleBack.
-    if (this.renaming || this.newGroupOpen) {
+    if (this.renaming || this.newGroupOpen || this.newFolderOpen) {
       if (action === 'select') this.commitTextInput();
       return true;
     }
 
     if (this.groupPickerFor) {
       if (action === 'up' || action === 'down') this.movePickerFocus(action);
-      else if (action === 'select') this.chooseGroupOption();
+      else if (action === 'select') {
+        if (this.nav.focused?.dataset.folderChoice !== undefined) this.chooseFolderOption();
+        else this.chooseGroupOption();
+      }
       return true;
     }
     if (this.epgPickerFor) {
@@ -725,6 +776,11 @@ export class ChannelListEditor {
     if (group && group.indexOf('source:') === 0) {
       return { kind: 'group', key: this.groupKeyForDisplay(group.slice('source:'.length)) };
     }
+    // Folder sidebar rows carry the raw folder key directly (see
+    // channel-list.ts's toSidebarEntries) — no display-name indirection.
+    if (group && group.indexOf('folder:') === 0) {
+      return { kind: 'folder', key: group.slice('folder:'.length) };
+    }
     return null;
   }
 
@@ -739,7 +795,8 @@ export class ChannelListEditor {
 
   private moveGrabbed(delta: number): void {
     const grabbed = this.grabbed;
-    if (!grabbed) return;
+    // Folders don't support manual reordering yet — creation order only.
+    if (!grabbed || grabbed.kind === 'folder') return;
 
     if (grabbed.kind === 'channel') {
       const list = PlaylistService.getByGroup(
@@ -858,6 +915,9 @@ export class ChannelListEditor {
       showToast(t('channel.editSelectFirst'));
       return;
     }
+    // Hiding isn't a folder concept — a folder is just a visibility overlay
+    // over real (hideable) groups, so this is a silent no-op for one.
+    if (target.kind === 'folder') return;
     if (target.kind === 'channel') ChannelCustomizationService.toggleHidden(target.key);
     else ChannelCustomizationService.toggleGroupHidden(target.key);
     this.applyEdit();
@@ -894,6 +954,20 @@ export class ChannelListEditor {
       this.options.render();
       return;
     }
+    if (this.newFolderOpen) {
+      const key = this.groupPickerFor;
+      if (key && value.trim() && this.folderNameExists(value)) {
+        showToast(t('channel.editFolderExists'));
+        return;
+      }
+      this.newFolderOpen = false;
+      this.groupPickerFor = null;
+      if (key && value.trim()) ChannelCustomizationService.assignFolder(key, value);
+      this.applyEdit();
+      if (key) this.refocus = `ch:${PlaylistService.indexOfKey(key)}`;
+      this.options.render();
+      return;
+    }
 
     const target = this.renaming;
     if (target) {
@@ -901,9 +975,14 @@ export class ChannelListEditor {
         showToast(t('channel.editGroupExists'));
         return;
       }
+      if (target.kind === 'folder' && this.folderNameExists(value, target.key)) {
+        showToast(t('channel.editFolderExists'));
+        return;
+      }
       this.renaming = null;
       if (target.kind === 'channel') ChannelCustomizationService.rename(target.key, value);
-      else ChannelCustomizationService.renameGroup(target.key, value);
+      else if (target.kind === 'group') ChannelCustomizationService.renameGroup(target.key, value);
+      else ChannelCustomizationService.renameFolder(target.key, value);
       this.applyEdit();
       if (target.kind === 'channel') {
         this.refocus = `ch:${PlaylistService.indexOfKey(target.key)}`;
@@ -920,11 +999,23 @@ export class ChannelListEditor {
         .trim().toLowerCase() === normalized);
   }
 
-  // Red on a channel opens the move-to-group picker; on a folder (a
-  // user-created group) it deletes it, after confirmation — the same key was
+  // Folders are a separate namespace from groups (see types.ts), so a name
+  // collision is only checked against other folders, not group names.
+  private folderNameExists(value: string, excludeKey: string | null = null): boolean {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    return ChannelCustomizationService.customFolders.some((key) => key !== excludeKey
+      && groupDisplayLabel(ChannelCustomizationService.folderLabel(key))
+        .trim().toLowerCase() === normalized);
+  }
+
+  // Red on a channel opens the picker (move to a real group, or assign/
+  // remove a folder — the two are independent, see types.ts); on a
+  // user-created group it deletes it, after confirmation — the same key was
   // a silent no-op on any group before, so this doesn't take anything away.
   // A real (provider) group still does nothing: only user-created ones can
-  // be deleted.
+  // be deleted. (Folders get their own delete path once they're grabbable
+  // sidebar rows.)
   private handleRedAction(): void {
     const target = this.grabbed;
     if (!target) {
@@ -933,6 +1024,8 @@ export class ChannelListEditor {
     }
     if (target.kind === 'channel') {
       this.openGroupPicker(target.key);
+    } else if (target.kind === 'folder') {
+      this.confirmDeleteFolder(target.key);
     } else if (ChannelCustomizationService.customGroups.includes(target.key)) {
       this.confirmDeleteGroup(target.key);
     }
@@ -961,6 +1054,24 @@ export class ChannelListEditor {
     });
   }
 
+  private confirmDeleteFolder(folderKey: string): void {
+    const name = ChannelCustomizationService.folderLabel(folderKey);
+    const count = ChannelCustomizationService.folderOverrideCount(folderKey);
+    this.confirmationPrompt.show({
+      title: t('channel.editDeleteFolderTitle', { name }),
+      message: t('channel.editDeleteFolderMessage', { channels: tp('channel.count', count) }),
+      confirmLabel: t('channel.editDeleteGroup'),
+      cancelLabel: t('common.cancel'),
+      onConfirm: () => {
+        ChannelCustomizationService.removeCustomFolder(folderKey);
+        this.grabbed = null;
+        this.applyEdit();
+        this.options.render();
+      },
+      onCancel: () => {},
+    });
+  }
+
   private chooseGroupOption(): void {
     const choice = this.nav.focused?.dataset.groupChoice;
     const key = this.groupPickerFor;
@@ -971,6 +1082,23 @@ export class ChannelListEditor {
       return;
     }
     ChannelCustomizationService.setGroup(key, choice === 'source' ? '' : choice);
+    this.groupPickerFor = null;
+    this.applyEdit();
+    this.refocus = `ch:${PlaylistService.indexOfKey(key)}`;
+    this.options.render();
+  }
+
+  private chooseFolderOption(): void {
+    const choice = this.nav.focused?.dataset.folderChoice;
+    const key = this.groupPickerFor;
+    if (!choice || !key) return;
+    if (choice === 'new') {
+      this.newFolderOpen = true;
+      this.options.render();
+      return;
+    }
+    if (choice === 'remove') ChannelCustomizationService.removeFromFolder(key);
+    else ChannelCustomizationService.assignFolder(key, choice);
     this.groupPickerFor = null;
     this.applyEdit();
     this.refocus = `ch:${PlaylistService.indexOfKey(key)}`;
@@ -1296,8 +1424,9 @@ export class ChannelListEditor {
 
   private renderEditHints(): Safe {
     const grabbed = !!this.grabbed;
-    const grabbedFolder = this.grabbed?.kind === 'group'
-      && ChannelCustomizationService.customGroups.includes(this.grabbed.key);
+    const grabbedDeletable = this.grabbed?.kind === 'folder'
+      || (this.grabbed?.kind === 'group'
+        && ChannelCustomizationService.customGroups.includes(this.grabbed.key));
     return html`
       <div class="edit-hints">
         <span class="edit-hint"><span class="edit-key key-ok">OK</span><span>${
@@ -1310,7 +1439,7 @@ export class ChannelListEditor {
                   t('channel.editRename')}</span></button>
         <button class="edit-hint edit-action" data-key="edit:red" data-focusable
                 data-edit-action="red"><span class="edit-key key-red"></span><span>${
-                  grabbedFolder ? t('channel.editDeleteGroup') : t('channel.editGroup')}</span></button>
+                  grabbedDeletable ? t('channel.editDeleteGroup') : t('channel.editGroup')}</span></button>
         <button class="edit-hint edit-action" data-key="edit:epg" data-focusable
                 data-epg-action>
           <span class="edit-action-icon">${raw(GUIDE_ICON)}</span>
