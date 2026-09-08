@@ -259,6 +259,15 @@ describe('ChannelList.render', () => {
     expect(container.querySelector('.channel-edit-btn')).toBeNull();
   });
 
+  it('keeps the header (pencil + count) intact once a folder exists', () => {
+    ChannelCustomizationService.setGroup(channelKey(data.channels[0]), 'Custom');
+    playlistMock.applyCustomization();
+    list.render();
+    expect(container.querySelector('.channel-count')?.textContent).toBe('3 channels');
+    const edit = container.querySelector<HTMLElement>('.channel-edit-btn');
+    expect(edit?.querySelector('img')?.getAttribute('src')).toBe('assets/icons/pencil.svg');
+  });
+
   it('uses the singular channel count for a one-channel playlist', () => {
     const removed = playlistMock.channels.splice(1);
     try {
