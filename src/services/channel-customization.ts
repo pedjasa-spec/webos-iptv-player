@@ -15,6 +15,10 @@ function emptyRecord(): ChannelCustomization {
     groupOverrides: {},
     customGroups: [],
     favoriteGroups: [],
+    customFolders: [],
+    folderOverrides: {},
+    // A fresh record has nothing to migrate.
+    foldersMigrated: true,
   };
 }
 
@@ -30,8 +34,67 @@ class ChannelCustomizationServiceImpl {
   private data: ChannelCustomization | null = null;
 
   private get record(): ChannelCustomization {
-    if (!this.data) this.data = StorageService.getChannelCustomization() ?? emptyRecord();
+    if (!this.data) {
+      this.data = StorageService.getChannelCustomization() ?? emptyRecord();
+      // Defensive: a record from before these fields existed lacks them
+      // outright — every reader below relies on them always being set.
+      if (!this.data.favoriteGroups) this.data.favoriteGroups = [];
+      if (!this.data.customFolders) this.data.customFolders = [];
+      if (!this.data.folderOverrides) this.data.folderOverrides = {};
+    }
     return this.data;
+  }
+
+  /**
+   * One-time: folders used to be plain custom groups (`customGroups` /
+   * `ov.group`) that *moved* a channel out of its source group. Move every
+   * such entry into the structurally separate `customFolders` / `ov.folder`
+   * fields so folder membership becomes additive instead.
+   *
+   * `customGroups` also carries a second, unrelated case: the "move to
+   * group" picker lists every real (source) group as a target too, and
+   * reassigning to one of those adds it here the same way a folder does.
+   * Those aren't folders — they're ordinary group reassignments — so a key
+   * that matches a real group among `channels` is left exactly as-is; only
+   * a key with no matching real group (which could only have been created
+   * through "New group", i.e. a folder) is migrated. Requires a channel
+   * list, so this runs from `applyTo`, not from `record`. `foldersMigrated`
+   * makes it one-time, so a later legitimate reassignment that adds a real
+   * group key back into `customGroups` is never swept in.
+   */
+  private migrateFolders(channels: Channel[]): void {
+    const d = this.data!;
+    if (d.foldersMigrated) return;
+    d.foldersMigrated = true;
+    if (d.customGroups.length === 0) {
+      this.persist();
+      return;
+    }
+    const realGroupKeys = new Set(channels.map((ch) => ch.sourceGroup ?? ch.group));
+    const migratedKeys = new Set(d.customGroups.filter((key) => !realGroupKeys.has(key)));
+    if (migratedKeys.size === 0) {
+      this.persist();
+      return;
+    }
+    for (const groupKey of migratedKeys) {
+      if (!d.customFolders.includes(groupKey)) d.customFolders.push(groupKey);
+      const ov = d.groupOverrides[groupKey];
+      if (ov) {
+        d.folderOverrides[groupKey] = ov;
+        delete d.groupOverrides[groupKey];
+      }
+    }
+    d.customGroups = d.customGroups.filter((key) => !migratedKeys.has(key));
+    d.groupOrder = d.groupOrder.filter((key) => !migratedKeys.has(key));
+    d.favoriteGroups = d.favoriteGroups.filter((key) => !migratedKeys.has(key));
+    for (const key in d.overrides) {
+      const ov = d.overrides[key];
+      if (ov.group === undefined || !migratedKeys.has(ov.group)) continue;
+      ov.folder = ov.group;
+      delete ov.group;
+    }
+    this.persist();
+    log.info('Migrated legacy custom groups to folders', 'event=folders.migrated');
   }
 
   private persist(): void {
@@ -50,8 +113,10 @@ class ChannelCustomizationServiceImpl {
       || d.groupOrder.length > 0
       || d.customGroups.length > 0
       || d.favoriteGroups.length > 0
+      || d.customFolders.length > 0
       || Object.keys(d.overrides).length > 0
-      || Object.keys(d.groupOverrides).length > 0;
+      || Object.keys(d.groupOverrides).length > 0
+      || Object.keys(d.folderOverrides).length > 0;
   }
 
   reset(): void {
@@ -245,6 +310,87 @@ class ChannelCustomizationServiceImpl {
     return favorited;
   }
 
+  // --- Folders
+  //
+  // Additive visibility, unlike `group`: assigning a channel to a folder never
+  // changes which (real) group it belongs to, so it stays visible in both. A
+  // channel sits in at most one folder — assigning a new one replaces the old.
+
+  /** The folder key a channel is assigned to, or undefined if none. */
+  folderFor(key: string): string | undefined {
+    return this.record.overrides[key]?.folder;
+  }
+
+  get customFolders(): string[] {
+    return this.record.customFolders.slice();
+  }
+
+  folderLabel(folderKey: string): string {
+    return this.record.folderOverrides[folderKey]?.name || folderKey;
+  }
+
+  /** Create a folder if it doesn't already exist; a no-op otherwise. */
+  addCustomFolder(name: string): void {
+    const trimmed = name.trim();
+    if (!trimmed || this.record.customFolders.includes(trimmed)) return;
+    this.record.customFolders.push(trimmed);
+    this.persist();
+  }
+
+  /** An empty folder key removes the channel from its folder without
+   *  touching its group. A non-empty key replaces any previous assignment
+   *  and creates the folder if it's new. */
+  assignFolder(key: string, folderKey: string): void {
+    const trimmed = folderKey.trim();
+    this.mutate(key, (ov) => {
+      if (trimmed) ov.folder = trimmed;
+      else delete ov.folder;
+    });
+    if (trimmed) this.addCustomFolder(trimmed);
+  }
+
+  /** Remove a channel from its folder, if any. Its group is untouched. */
+  removeFromFolder(key: string): void {
+    this.assignFolder(key, '');
+  }
+
+  renameFolder(folderKey: string, name: string): void {
+    const trimmed = name.trim();
+    this.mutateFolder(folderKey, (ov) => {
+      if (trimmed && trimmed !== folderKey) ov.name = trimmed;
+      else delete ov.name;
+    });
+  }
+
+  /** Channels assigned to `folderKey` — this folder's full membership count,
+   *  used to size a delete confirmation. */
+  folderOverrideCount(folderKey: string): number {
+    let count = 0;
+    for (const key in this.record.overrides) {
+      if (this.record.overrides[key].folder === folderKey) count++;
+    }
+    return count;
+  }
+
+  /**
+   * Delete a user-created folder: every channel assigned to it is removed
+   * from the folder (its group is never touched), its rename state is
+   * dropped. A no-op for an unknown key.
+   */
+  removeCustomFolder(folderKey: string): void {
+    const at = this.record.customFolders.indexOf(folderKey);
+    if (at < 0) return;
+    this.record.customFolders.splice(at, 1);
+    delete this.record.folderOverrides[folderKey];
+    for (const key in this.record.overrides) {
+      const ov = this.record.overrides[key];
+      if (ov.folder !== folderKey) continue;
+      delete ov.folder;
+      if (isEmpty(ov)) delete this.record.overrides[key];
+    }
+    this.persist();
+  }
+
   // --- Reordering
   //
   // `order` is a snapshot list written on the first move: it holds the effective
@@ -272,6 +418,7 @@ class ChannelCustomizationServiceImpl {
    */
   applyTo(channels: Channel[], includeHidden = false): Channel[] {
     const d = this.record;
+    if (!d.foldersMigrated) this.migrateFolders(channels);
     const rank = new Map<string, number>();
     for (let i = 0; i < d.order.length; i++) rank.set(d.order[i], i);
 
@@ -325,6 +472,15 @@ class ChannelCustomizationServiceImpl {
     fn(ov);
     if (isEmpty(ov)) delete this.record.groupOverrides[groupKey];
     else this.record.groupOverrides[groupKey] = ov;
+    this.persist();
+  }
+
+  private mutateFolder(folderKey: string, fn: (ov: GroupOverride) => void): void {
+    if (!folderKey) return;
+    const ov = this.record.folderOverrides[folderKey] ?? {};
+    fn(ov);
+    if (isEmpty(ov)) delete this.record.folderOverrides[folderKey];
+    else this.record.folderOverrides[folderKey] = ov;
     this.persist();
   }
 }

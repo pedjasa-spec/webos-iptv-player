@@ -688,6 +688,54 @@ describe('PlaylistService.getByGroup', () => {
   });
 });
 
+describe('PlaylistService folder membership', () => {
+  beforeEach(() => {
+    storageMock.getChannelCustomization.mockReturnValue(null);
+    ChannelCustomizationService.reload();
+    PlaylistService.channels = [
+      channel({ id: 'a', name: 'Alpha', group: 'News', playlistIds: ['P1'], url: 'http://host/a' }),
+      channel({ id: 'b', name: 'Bravo', group: 'Sports', playlistIds: ['P1'], url: 'http://host/b' }),
+      channel({ id: 'c', name: 'Charlie', group: 'News', playlistIds: ['P2'], url: 'http://host/c' }),
+    ];
+  });
+
+  it('lists channels assigned to a folder, additive to their real group', () => {
+    ChannelCustomizationService.assignFolder(channelKey(PlaylistService.channels[0]), 'Kids');
+    ChannelCustomizationService.assignFolder(channelKey(PlaylistService.channels[2]), 'Kids');
+
+    expect(PlaylistService.getByGroup('folder:Kids').map(c => c.name)).toEqual(['Alpha', 'Charlie']);
+    // Still fully present in their real (source) group — folders are additive.
+    expect(PlaylistService.getByGroup('source:News').map(c => c.name)).toEqual(['Alpha', 'Charlie']);
+    expect(PlaylistService.getGroupCount('folder:Kids')).toBe(2);
+  });
+
+  it('scopes folder membership to a playlist when one is given', () => {
+    ChannelCustomizationService.assignFolder(channelKey(PlaylistService.channels[0]), 'Kids');
+    ChannelCustomizationService.assignFolder(channelKey(PlaylistService.channels[2]), 'Kids');
+
+    expect(PlaylistService.getByGroup('folder:Kids', 'P1').map(c => c.name)).toEqual(['Alpha']);
+    expect(PlaylistService.getByGroup('folder:Kids', 'P2').map(c => c.name)).toEqual(['Charlie']);
+    expect(PlaylistService.getGroupCount('folder:Kids', 'P1')).toBe(1);
+  });
+
+  it('returns nothing for an unknown or empty folder', () => {
+    expect(PlaylistService.getByGroup('folder:Missing')).toEqual([]);
+    expect(PlaylistService.getGroupCount('folder:Missing')).toBe(0);
+  });
+
+  it('drops a channel from folder membership once removed, without touching its group', () => {
+    const key = channelKey(PlaylistService.channels[0]);
+    ChannelCustomizationService.assignFolder(key, 'Kids');
+    ChannelCustomizationService.removeFromFolder(key);
+    // A new array reference is what an app-level edit produces (applyCustomization);
+    // this simulates it without needing a full playlist refresh in this fixture.
+    PlaylistService.channels = [...PlaylistService.channels];
+
+    expect(PlaylistService.getByGroup('folder:Kids')).toEqual([]);
+    expect(PlaylistService.getByGroup('source:News').map(c => c.name)).toEqual(['Alpha', 'Charlie']);
+  });
+});
+
 function localSearchResults(query: string, playlist?: string): Channel[] {
   return PlaylistService.searchLocalRanked(
     query,
@@ -925,7 +973,12 @@ describe('PlaylistService customization', () => {
   });
 
   it('keeps empty custom groups in global navigation only', async () => {
-    useRecord(record({ customGroups: ['Empty'] }));
+    // Seeded as already migrated: a *new* custom group made through the
+    // still-untouched "move to group" feature, not stored legacy data (a
+    // stored customGroups entry is, by construction, a pre-v2 folder and is
+    // migrated away from plain group navigation — see channel-customization.test.ts).
+    useRecord(record({ foldersMigrated: true }));
+    ChannelCustomizationService.addCustomGroup('Empty');
     await PlaylistService.refresh();
 
     expect(PlaylistService.groups).toContain('Empty');
@@ -956,11 +1009,16 @@ describe('PlaylistService customization', () => {
   });
 
   it('applies renames and group assignments and orders the groups', async () => {
+    // Seeded as already migrated, then reassigned live: a stored
+    // customGroups + ov.group pair is legacy folder data (see the migration
+    // test in channel-customization.test.ts), not an ongoing "move to
+    // group" — that still-untouched feature is exercised here directly.
     useRecord(record({
-      overrides: { [KEY_A]: { name: 'Alpha Two', group: 'Custom' } },
+      overrides: { [KEY_A]: { name: 'Alpha Two' } },
       groupOrder: [UNCATEGORIZED_GROUP, 'Custom'],
-      customGroups: ['Custom'],
+      foldersMigrated: true,
     }));
+    ChannelCustomizationService.setGroup(KEY_A, 'Custom');
     await PlaylistService.refresh();
 
     const alpha = PlaylistService.channels[0];

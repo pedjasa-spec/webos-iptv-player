@@ -789,6 +789,9 @@ describe('StorageService channel customization store', () => {
     groupOverrides: { News: { name: 'Headlines' } },
     customGroups: ['Custom'],
     favoriteGroups: ['Sports'],
+    customFolders: ['Kids'],
+    folderOverrides: { Kids: { name: 'For the kids' } },
+    foldersMigrated: true,
   });
 
   it('round-trips the customization record', () => {
@@ -801,6 +804,18 @@ describe('StorageService channel customization store', () => {
     delete legacy.favoriteGroups;
     StorageService.setChannelCustomization(legacy as unknown as ChannelCustomization);
     expect(StorageService.getChannelCustomization()?.favoriteGroups).toEqual([]);
+  });
+
+  it('defaults folder fields on a record written before they existed', () => {
+    const legacy = record() as Partial<ReturnType<typeof record>>;
+    delete legacy.customFolders;
+    delete legacy.folderOverrides;
+    delete legacy.foldersMigrated;
+    StorageService.setChannelCustomization(legacy as unknown as ChannelCustomization);
+    const loaded = StorageService.getChannelCustomization();
+    expect(loaded?.customFolders).toEqual([]);
+    expect(loaded?.folderOverrides).toEqual({});
+    expect(loaded?.foldersMigrated).toBe(false);
   });
 
   it('returns null by default and after a clear', () => {

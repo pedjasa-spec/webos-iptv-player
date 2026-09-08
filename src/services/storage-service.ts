@@ -106,6 +106,9 @@ function customizationRecords(data: ChannelCustomization): UserDataRecord[] {
       groupOrder: data.groupOrder,
       customGroups: data.customGroups,
       favoriteGroups: data.favoriteGroups,
+      // Legacy (pre-folders) records migrating from localStorage lack these.
+      customFolders: data.customFolders ?? [],
+      foldersMigrated: data.foldersMigrated ?? false,
     }),
   ];
   for (const key of Object.keys(data.overrides)) {
@@ -114,6 +117,9 @@ function customizationRecords(data: ChannelCustomization): UserDataRecord[] {
 
   for (const key of Object.keys(data.groupOverrides)) {
     records.push(record(`custom:group:${key}`, data.groupOverrides[key]));
+  }
+  for (const key of Object.keys(data.folderOverrides ?? {})) {
+    records.push(record(`custom:folder:${key}`, data.folderOverrides[key]));
   }
   return records;
 }
@@ -309,13 +315,16 @@ async function loadUserDataState(): Promise<UserDataState> {
   }
 
   const customMeta = channelState.find(item => item.key === 'custom:meta')?.value as
-    Omit<ChannelCustomization, 'overrides' | 'groupOverrides'> | undefined;
+    Omit<ChannelCustomization, 'overrides' | 'groupOverrides' | 'folderOverrides'> | undefined;
   if (customMeta) {
     data.channelCustomization = {
       ...customMeta,
       favoriteGroups: customMeta.favoriteGroups ?? [],
+      customFolders: customMeta.customFolders ?? [],
+      foldersMigrated: customMeta.foldersMigrated ?? false,
       overrides: {},
       groupOverrides: {},
+      folderOverrides: {},
     };
   }
   for (const item of channelState) {
@@ -331,6 +340,9 @@ async function loadUserDataState(): Promise<UserDataState> {
     } else if (item.key.startsWith('custom:group:') && data.channelCustomization) {
       data.channelCustomization.groupOverrides[item.key.slice(13)] =
         item.value as ChannelCustomization['groupOverrides'][string];
+    } else if (item.key.startsWith('custom:folder:') && data.channelCustomization) {
+      data.channelCustomization.folderOverrides[item.key.slice(14)] =
+        item.value as ChannelCustomization['folderOverrides'][string];
     }
   }
   for (const item of watchlist) {
@@ -604,9 +616,15 @@ export const StorageService = {
       ? cloneValue(userData.channelCustomization)
       : get<ChannelCustomization | null>('channel_custom', null);
     if (!data || data.version !== CONFIG.CHANNEL_CUSTOMIZATION_VERSION) return null;
-    // A record written before favoriteGroups existed lacks the field; default
-    // it so every reader can rely on it always being an array.
-    return { ...data, favoriteGroups: data.favoriteGroups ?? [] };
+    // A record written before favoriteGroups/customFolders existed lacks the
+    // fields; default them so every reader can rely on them always being set.
+    return {
+      ...data,
+      favoriteGroups: data.favoriteGroups ?? [],
+      customFolders: data.customFolders ?? [],
+      folderOverrides: data.folderOverrides ?? {},
+      foldersMigrated: data.foldersMigrated ?? false,
+    };
   },
   setChannelCustomization(data: ChannelCustomization): void {
     if (!userData) {

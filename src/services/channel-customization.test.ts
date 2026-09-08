@@ -243,6 +243,142 @@ describe('ChannelCustomizationService', () => {
     expect(ChannelCustomizationService.favoriteGroups).toEqual(['Music']);
   });
 
+  it('assigns a channel to a folder without touching its group', () => {
+    ChannelCustomizationService.assignFolder(KEY_A, 'Kids');
+    expect(ChannelCustomizationService.folderFor(KEY_A)).toBe('Kids');
+    expect(ChannelCustomizationService.customFolders).toEqual(['Kids']);
+    // Still visible under its real (source) group — folders are additive.
+    const channels = ChannelCustomizationService.applyTo(fixture());
+    expect(channels[0].group).toBe('News');
+    expect(channels[0].groupKey).toBeUndefined();
+  });
+
+  it('moving a channel to a new folder replaces any previous assignment', () => {
+    ChannelCustomizationService.assignFolder(KEY_A, 'Kids');
+    ChannelCustomizationService.assignFolder(KEY_A, 'Sports Picks');
+    expect(ChannelCustomizationService.folderFor(KEY_A)).toBe('Sports Picks');
+    expect(ChannelCustomizationService.customFolders).toEqual(['Kids', 'Sports Picks']);
+  });
+
+  it('removes a channel from its folder without touching its group', () => {
+    ChannelCustomizationService.setGroup(KEY_A, 'Custom');
+    ChannelCustomizationService.assignFolder(KEY_A, 'Kids');
+    ChannelCustomizationService.removeFromFolder(KEY_A);
+    expect(ChannelCustomizationService.folderFor(KEY_A)).toBeUndefined();
+    // The group override, set independently, survives.
+    expect(ChannelCustomizationService.applyTo(fixture())[0].group).toBe('Custom');
+  });
+
+  it('counts channels assigned to a folder', () => {
+    expect(ChannelCustomizationService.folderOverrideCount('Kids')).toBe(0);
+    ChannelCustomizationService.assignFolder(KEY_A, 'Kids');
+    ChannelCustomizationService.assignFolder(KEY_B, 'Kids');
+    expect(ChannelCustomizationService.folderOverrideCount('Kids')).toBe(2);
+    expect(ChannelCustomizationService.folderOverrideCount('Sports')).toBe(0);
+  });
+
+  it('renames a folder without changing its key', () => {
+    ChannelCustomizationService.addCustomFolder('Kids');
+    ChannelCustomizationService.renameFolder('Kids', 'For the kids');
+    expect(ChannelCustomizationService.folderLabel('Kids')).toBe('For the kids');
+  });
+
+  it('deletes a custom folder, clearing membership without touching channel groups', () => {
+    ChannelCustomizationService.setGroup(KEY_A, 'Custom');
+    ChannelCustomizationService.assignFolder(KEY_A, 'Kids');
+    ChannelCustomizationService.assignFolder(KEY_B, 'Kids');
+    ChannelCustomizationService.renameFolder('Kids', 'For the kids');
+    expect(ChannelCustomizationService.customFolders).toEqual(['Kids']);
+
+    ChannelCustomizationService.removeCustomFolder('Kids');
+
+    expect(ChannelCustomizationService.customFolders).toEqual([]);
+    expect(ChannelCustomizationService.folderOverrideCount('Kids')).toBe(0);
+    expect(ChannelCustomizationService.folderFor(KEY_A)).toBeUndefined();
+    expect(ChannelCustomizationService.folderFor(KEY_B)).toBeUndefined();
+    expect(ChannelCustomizationService.folderLabel('Kids')).toBe('Kids'); // rename dropped
+    // The channel explicitly moved to a real group is unaffected.
+    expect(ChannelCustomizationService.applyTo(fixture())[0].group).toBe('Custom');
+  });
+
+  it('does nothing when asked to delete an unknown folder', () => {
+    ChannelCustomizationService.removeCustomFolder('Nope');
+    expect(ChannelCustomizationService.customFolders).toEqual([]);
+  });
+
+  it('migrates a legacy customGroups-based folder into the folder fields once', () => {
+    // Kids/Custom have no match among the channels' real (source) groups —
+    // they could only have been created via "New group", i.e. a folder.
+    // Sports *is* a real source group (Charlie's) — Bravo was reassigned to
+    // it the ordinary way, and that must be left alone, not folded in.
+    const legacy = {
+      version: CONFIG.CHANNEL_CUSTOMIZATION_VERSION,
+      overrides: {
+        [KEY_A]: { group: 'Kids' },
+        [KEY_B]: { group: 'Sports' },
+      },
+      order: [],
+      groupOrder: ['Kids', 'Sports', 'Custom'],
+      groupOverrides: { Kids: { name: 'For the kids' } },
+      customGroups: ['Kids', 'Sports', 'Custom'],
+      favoriteGroups: ['Kids', 'Sports'],
+    } as unknown as ChannelCustomization;
+    storageMock.getChannelCustomization.mockReturnValue(legacy);
+    ChannelCustomizationService.reload();
+
+    // Migration needs real channel data, so it runs on the first applyTo —
+    // not merely from reload()/a getter access.
+    const channels = ChannelCustomizationService.applyTo(fixture(), true);
+
+    expect(ChannelCustomizationService.customFolders.sort()).toEqual(['Custom', 'Kids']);
+    expect(ChannelCustomizationService.customGroups).toEqual(['Sports']);
+    expect(ChannelCustomizationService.folderFor(KEY_A)).toBe('Kids');
+    expect(ChannelCustomizationService.folderFor(KEY_B)).toBeUndefined();
+    expect(ChannelCustomizationService.overrideFor(KEY_B)?.group).toBe('Sports');
+    expect(ChannelCustomizationService.folderLabel('Kids')).toBe('For the kids');
+    // Alpha's old "move" is now a folder, so it reverts to its real group;
+    // Bravo's real reassignment to Sports is untouched.
+    expect(channels[0].group).toBe('News');
+    expect(channels[1].group).toBe('Sports');
+    expect(channels[2].group).toBe('Sports');
+    // Group-only state follows the same split: dropped for the folder,
+    // kept for the group that stayed real.
+    expect(ChannelCustomizationService.isGroupFavorite('Kids')).toBe(false);
+    expect(ChannelCustomizationService.isGroupFavorite('Sports')).toBe(true);
+    expect(storageMock.setChannelCustomization).toHaveBeenCalled();
+  });
+
+  it('does not re-sweep a real group reassignment made after migration', () => {
+    // Migration already ran; a later legitimate move-to-group reassignment
+    // lands a key in customGroups again and must stay a group, not a folder.
+    const migrated = {
+      version: CONFIG.CHANNEL_CUSTOMIZATION_VERSION,
+      overrides: {},
+      order: [],
+      groupOrder: [],
+      groupOverrides: {},
+      customGroups: [],
+      favoriteGroups: [],
+      customFolders: ['Kids'],
+      folderOverrides: {},
+      foldersMigrated: true,
+    } as unknown as ChannelCustomization;
+    storageMock.getChannelCustomization.mockReturnValue(migrated);
+    ChannelCustomizationService.reload();
+
+    ChannelCustomizationService.setGroup(KEY_A, 'Newly Real Group');
+    expect(ChannelCustomizationService.customGroups).toEqual(['Newly Real Group']);
+
+    // Simulate the next app load re-reading exactly what was just persisted.
+    const persisted = storageMock.setChannelCustomization.mock.calls.at(-1)![0];
+    storageMock.getChannelCustomization.mockReturnValue(persisted);
+    ChannelCustomizationService.reload();
+
+    expect(ChannelCustomizationService.customGroups).toEqual(['Newly Real Group']);
+    expect(ChannelCustomizationService.customFolders).toEqual(['Kids']);
+    expect(ChannelCustomizationService.folderFor(KEY_A)).toBeUndefined();
+  });
+
   it('resets one channel and the whole record', () => {
     ChannelCustomizationService.rename(KEY_A, 'Alpha HD');
     ChannelCustomizationService.toggleHidden(KEY_B);

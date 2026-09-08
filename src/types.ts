@@ -177,8 +177,14 @@ export interface PlaylistEntry {
 export interface ChannelOverride {
   /** Display name replacing the source name. Absent = use the source name. */
   name?: string;
-  /** Target group key. Absent = the source group. */
+  /** Target group key. Absent = the source group. Reassigning here *moves* the
+   *  channel — it stops appearing in its previous group. Independent of
+   *  `folder`, which *adds* visibility without touching this. */
   group?: string;
+  /** User-created folder key. Absent = not in a folder. A channel is in at
+   *  most one folder; it stays visible in its (`group`-determined) group too —
+   *  folder membership never changes that. */
+  folder?: string;
   /** Composite EPG source/channel key. Absent = use automatic matching. */
   epgChannelId?: string;
   /** Correction added to the EPG source offset. Absent = follow the source exactly. */
@@ -209,6 +215,17 @@ export interface ChannelCustomization {
    *  of `groupOrder` (manual drag reorder) — favorited groups float above the
    *  rest regardless of where `groupOrder` would otherwise place them. */
   favoriteGroups: string[];
+  /** User-created folders (see `ChannelOverride.folder`) — a channel-visibility
+   *  overlay, structurally separate from `customGroups`/regrouping. */
+  customFolders: string[];
+  /** A folder's rename/hidden state, keyed by folder key — separate from
+   *  `groupOverrides` so a folder and a real group of the same name (rare, but
+   *  each namespace is checked for collisions independently) never share state. */
+  folderOverrides: Record<string, GroupOverride>;
+  /** Set once the one-time migration moving pre-"copy model" folders (stored
+   *  as plain `customGroups`/`ov.group`) into `customFolders`/`ov.folder` has
+   *  run, so a later legitimate group reassignment is never swept in too. */
+  foldersMigrated?: boolean;
 }
 
 export interface CatchupInfo {
@@ -240,7 +257,10 @@ export interface Reminder {
 export type TzMode = 'device' | 'feed';
 
 export type BuiltinChannelGroup = 'all' | 'favorites' | 'recently-watched';
-export type ChannelGroupId = `builtin:${BuiltinChannelGroup}` | `source:${string}`;
+export type ChannelGroupId =
+  | `builtin:${BuiltinChannelGroup}`
+  | `source:${string}`
+  | `folder:${string}`;
 
 /** Group key for channels the playlist left ungrouped. A key, never a label —
  *  views translate it, so a provider group literally named "Uncategorized"

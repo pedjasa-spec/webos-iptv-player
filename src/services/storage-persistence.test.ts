@@ -97,7 +97,13 @@ describe('StorageService IndexedDB migration', () => {
 
     expect(StorageService.getFavorites()).toEqual(['ch1']);
     expect(StorageService.getReminders()).toEqual([reminder]);
-    expect(StorageService.getChannelCustomization()).toEqual({ ...customization, favoriteGroups: [] });
+    expect(StorageService.getChannelCustomization()).toEqual({
+      ...customization,
+      favoriteGroups: [],
+      customFolders: [],
+      folderOverrides: {},
+      foldersMigrated: false,
+    });
     expect(StorageService.getAudioPref('ch1')).toEqual({ name: 'Track 1', lang: 'l1' });
     expect(StorageService.getSubtitlePref('ch1')).toEqual({
       off: false,

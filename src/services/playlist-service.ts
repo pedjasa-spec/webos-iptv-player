@@ -97,6 +97,10 @@ class PlaylistServiceImpl {
   private channelsByGroup = new Map<string, Channel[]>();
   private channelsByPlaylist = new Map<string, Channel[]>();
   private channelsByPlaylistGroup = new Map<string, Map<string, Channel[]>>();
+  // Folder membership: independent of `channelsByGroup` — a channel's folder
+  // never changes its (real) group, so it can appear in both indexes at once.
+  private channelsByFolder = new Map<string, Channel[]>();
+  private channelsByPlaylistFolder = new Map<string, Map<string, Channel[]>>();
   private groupsByPlaylist = new Map<string, string[]>();
   private groupKeyByDisplay = new Map<string, string>();
   private channelByKey = new Map<string, Channel>();
@@ -130,6 +134,8 @@ class PlaylistServiceImpl {
     this.channelsByGroup = new Map();
     this.channelsByPlaylist = new Map();
     this.channelsByPlaylistGroup = new Map();
+    this.channelsByFolder = new Map();
+    this.channelsByPlaylistFolder = new Map();
     this.groupsByPlaylist = new Map();
     this.groupKeyByDisplay = new Map();
     this.channelByKey = new Map();
@@ -480,6 +486,8 @@ class PlaylistServiceImpl {
     this.channelsByGroup = new Map();
     this.channelsByPlaylist = new Map();
     this.channelsByPlaylistGroup = new Map();
+    this.channelsByFolder = new Map();
+    this.channelsByPlaylistFolder = new Map();
     this.groupKeyByDisplay = new Map();
     this.channelByKey = new Map();
     this.channelByLegacyKey = new Map();
@@ -494,8 +502,9 @@ class PlaylistServiceImpl {
 
     for (let i = 0; i < this.channels.length; i++) {
       const ch = this.channels[i];
+      const key = channelKey(ch);
       this.indexMap.set(ch, i);
-      this.channelByKey.set(channelKey(ch), ch);
+      this.channelByKey.set(key, ch);
       const legacyKey = legacyChannelKey(ch);
       this.channelByLegacyKey.set(
         legacyKey,
@@ -508,8 +517,20 @@ class PlaylistServiceImpl {
         }
         this.appendIndexed(this.channelsByGroup, ch.group, ch);
       }
+      // Additive: a channel keeps its group-based indexing above regardless
+      // of folder membership.
+      const folderKey = ChannelCustomizationService.folderFor(key);
+      if (folderKey) this.appendIndexed(this.channelsByFolder, folderKey, ch);
       for (const playlistId of ch.playlistIds) {
         this.appendIndexed(this.channelsByPlaylist, playlistId, ch);
+        if (folderKey) {
+          let byFolder = this.channelsByPlaylistFolder.get(playlistId);
+          if (!byFolder) {
+            byFolder = new Map();
+            this.channelsByPlaylistFolder.set(playlistId, byFolder);
+          }
+          this.appendIndexed(byFolder, folderKey, ch);
+        }
         if (!ch.group) continue;
         let byGroup = this.channelsByPlaylistGroup.get(playlistId);
         if (!byGroup) {
@@ -608,6 +629,12 @@ class PlaylistServiceImpl {
       favorites.sort((a, b) => this.indexOf(a) - this.indexOf(b));
       return favorites;
     }
+    if (group.startsWith('folder:')) {
+      const folderKey = group.slice('folder:'.length);
+      return playlist
+        ? this.channelsByPlaylistFolder.get(playlist)?.get(folderKey) ?? []
+        : this.channelsByFolder.get(folderKey) ?? [];
+    }
     const sourceGroup = group.slice('source:'.length);
     return playlist
       ? this.channelsByPlaylistGroup.get(playlist)?.get(sourceGroup) ?? []
@@ -620,6 +647,12 @@ class PlaylistServiceImpl {
       return playlist ? this.channelsByPlaylist.get(playlist)?.length ?? 0 : this.channels.length;
     }
     if (group === 'builtin:favorites') return this.getByGroup(group, playlist).length;
+    if (group.startsWith('folder:')) {
+      const folderKey = group.slice('folder:'.length);
+      return playlist
+        ? this.channelsByPlaylistFolder.get(playlist)?.get(folderKey)?.length ?? 0
+        : this.channelsByFolder.get(folderKey)?.length ?? 0;
+    }
     const sourceGroup = group.slice('source:'.length);
     return playlist
       ? this.channelsByPlaylistGroup.get(playlist)?.get(sourceGroup)?.length ?? 0
