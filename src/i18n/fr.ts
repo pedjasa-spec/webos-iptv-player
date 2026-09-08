@@ -24,6 +24,7 @@ export const FR_MESSAGES = {
   'nav.epg': 'Guide',
   'nav.movies': 'Films',
   'nav.series': 'Séries',
+  'nav.editChannels': 'Modifier',
   'nav.settings': 'Paramètres',
   'nav.search': 'Rechercher',
   'nav.switchAccount': 'Changer de compte',

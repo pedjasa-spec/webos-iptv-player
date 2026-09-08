@@ -721,6 +721,14 @@ class App {
 
   // Map a tab-bar section to its view and show it (Live = the channels view).
   private switchSection(section: Section): void {
+    // 'edit' isn't a real view — same action as the pencil button, over Live.
+    if (section === 'edit') {
+      this.tabBar.setActive('live');
+      this.showView('channels');
+      this.channelList.render();
+      this.channelList.enterEditMode();
+      return;
+    }
     if (section !== 'live' && this.channelList.isEditing) this.channelList.exitEditMode();
     if (section !== 'movies' && section !== 'search') this.movies.deactivate();
     if (section !== 'series' && section !== 'search') this.series.deactivate();

@@ -24,6 +24,7 @@ export const UK_MESSAGES = {
   'nav.epg': 'Телегід',
   'nav.movies': 'Фільми',
   'nav.series': 'Серіали',
+  'nav.editChannels': 'Редагувати',
   'nav.settings': 'Налаштування',
   'nav.search': 'Пошук',
   'nav.switchAccount': 'Змінити обліковий запис',

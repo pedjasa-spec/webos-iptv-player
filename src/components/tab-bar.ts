@@ -11,11 +11,16 @@ export const SEARCH_INPUT_MAX_WIDTH = 600;
 
 // The single source of truth for the sections: order, label, the view each maps
 // to, and whether it needs an Xtream account.
+// 'edit' has no view of its own — selecting it is an action (open channel
+// editing over Live, honoring the same Recently-Watched-falls-back-to-All
+// rule as the pencil button), handled specially by the host; it shares
+// Live's `view` purely so `sectionForView` still resolves to 'live'.
 export const SECTIONS = [
   { id: 'live', labelKey: 'nav.live', view: 'channels', xtreamOnly: false },
   { id: 'epg', labelKey: 'nav.epg', view: 'epg', xtreamOnly: false },
   { id: 'movies', labelKey: 'nav.movies', view: 'movies', xtreamOnly: true },
   { id: 'series', labelKey: 'nav.series', view: 'series', xtreamOnly: true },
+  { id: 'edit', labelKey: 'nav.editChannels', view: 'channels', xtreamOnly: false },
   { id: 'settings', labelKey: 'nav.settings', view: 'settings', xtreamOnly: false },
   { id: 'search', labelKey: 'nav.search', view: 'search', xtreamOnly: false },
 ] as const;

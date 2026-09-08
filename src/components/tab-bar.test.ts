@@ -32,14 +32,14 @@ describe('TabBar', () => {
   it('renders the app title and the full section set for an Xtream account', () => {
     expect(bar.shown).toBe(true);
     expect(document.querySelector('.tab-bar-title')?.textContent).toBe('webOS IPTV Player');
-    expect(items()).toEqual(['Live', 'Guide', 'Movies', 'Series', 'Settings', 'Search']);
+    expect(items()).toEqual(['Live', 'Guide', 'Movies', 'Series', 'Edit', 'Settings', 'Search']);
     expect(focusedLabel()).toBe(null); // shown but not focused → no ring
     expect(document.body.classList.contains('tabbar-docked')).toBe(true);
   });
 
-  it('renders only Live/Guide/Settings/Search for an M3U-only account', () => {
+  it('renders only Live/Guide/Edit/Settings/Search for an M3U-only account', () => {
     bar.setSections(false);
-    expect(items()).toEqual(['Live', 'Guide', 'Settings', 'Search']);
+    expect(items()).toEqual(['Live', 'Guide', 'Edit', 'Settings', 'Search']);
   });
 
   it('focus() puts the ring on the active tab', () => {
@@ -71,11 +71,13 @@ describe('TabBar', () => {
     expect(bar.focused).toBe(true);
   });
 
-  it('right from Live on an M3U account skips to Guide then Settings (no Movies/Series)', () => {
+  it('right from Live on an M3U account skips to Guide, Edit, then Settings (no Movies/Series)', () => {
     bar.setSections(false);
     bar.focus();
     bar.handleAction('right');
     expect(onSwitch).toHaveBeenLastCalledWith('epg');
+    bar.handleAction('right');
+    expect(onSwitch).toHaveBeenLastCalledWith('edit');
     bar.handleAction('right');
     expect(onSwitch).toHaveBeenLastCalledWith('settings');
   });

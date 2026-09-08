@@ -23,7 +23,8 @@ test('the tab bar is docked (always visible) and offsets the content below it', 
 
   // Always visible on the channels view — no pointer reveal needed.
   await expect(page.locator('.tab-bar')).toBeVisible();
-  await expect(page.locator('.tab-bar-item')).toHaveText(['Live', 'Guide', 'Movies', 'Series', 'Settings', '']);
+  await expect(page.locator('.tab-bar-item'))
+    .toHaveText(['Live', 'Guide', 'Movies', 'Series', 'Edit', 'Settings', '']);
   // Search is the far-right magnifier icon (no text label).
   await expect(page.locator('.tab-bar-item[data-section="search"] svg')).toBeVisible();
   // Docked → the view sits below the bar (top offset applied via the body class).
@@ -68,6 +69,22 @@ test('the Settings tab (after Series) opens the settings view', async ({ page })
 
   await enterTab(page, 'settings');
   await expect(page.locator('#view-settings')).toBeVisible();
+});
+
+test('the Edit tab opens channel editing over Live, same as the pencil button', async ({ page }) => {
+  await seedXtream(page);
+  await routeLiveManifest(page);
+  await page.goto('/');
+  await expect(page.locator('#view-channels')).toBeVisible();
+
+  // From a different view, Edit still lands on Live, in edit mode.
+  await enterTab(page, 'series');
+  await expect(page.locator('#view-series')).toBeVisible();
+
+  await enterTab(page, 'edit');
+  await expect(page.locator('#view-channels')).toBeVisible();
+  await expect(page.locator('.channel-view.editing .edit-hints')).toBeVisible();
+  await expect(page.locator('.tab-bar-item.active')).toHaveText('Live');
 });
 
 test('the tab bar is hidden during full-screen playback', async ({ page }) => {
@@ -171,7 +188,7 @@ test('M3U-only shows a docked bar with Live/Guide/Settings/Search only (no Movie
 
   // The bar is docked, but with the reduced M3U section set.
   await expect(page.locator('.tab-bar')).toBeVisible();
-  await expect(page.locator('.tab-bar-item')).toHaveText(['Live', 'Guide', 'Settings', '']);
+  await expect(page.locator('.tab-bar-item')).toHaveText(['Live', 'Guide', 'Edit', 'Settings', '']);
   await expect(page.locator('.tab-bar-item[data-section="movies"]')).toHaveCount(0);
   await expect(page.locator('.tab-bar-item[data-section="series"]')).toHaveCount(0);
   await expect(page.locator('.tab-bar-item[data-section="search"] svg')).toBeVisible();
@@ -194,7 +211,7 @@ test('no playlist or account configured shows Live/Guide/Settings/Search only (n
   await expect(page.locator('.tab-bar')).toBeVisible();
   await expect(page.locator('.tab-bar-item[data-section="movies"]')).toHaveCount(0);
   await expect(page.locator('.tab-bar-item[data-section="series"]')).toHaveCount(0);
-  await expect(page.locator('.tab-bar-item')).toHaveText(['Live', 'Guide', 'Settings', '']);
+  await expect(page.locator('.tab-bar-item')).toHaveText(['Live', 'Guide', 'Edit', 'Settings', '']);
   await expect(page.locator('.account-avatar')).toHaveCount(0);
 });
 

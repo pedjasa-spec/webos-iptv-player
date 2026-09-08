@@ -24,6 +24,7 @@ export const ZH_CN_MESSAGES = {
   'nav.epg': '节目指南',
   'nav.movies': '电影',
   'nav.series': '剧集',
+  'nav.editChannels': '编辑',
   'nav.settings': '设置',
   'nav.search': '搜索',
   'nav.switchAccount': '切换账号',

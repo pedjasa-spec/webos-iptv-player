@@ -24,6 +24,7 @@ export const RU_MESSAGES = {
   'nav.epg': 'Телегид',
   'nav.movies': 'Фильмы',
   'nav.series': 'Сериалы',
+  'nav.editChannels': 'Изменить',
   'nav.settings': 'Настройки',
   'nav.search': 'Поиск',
   'nav.switchAccount': 'Сменить аккаунт',
