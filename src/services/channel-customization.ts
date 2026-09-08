@@ -180,6 +180,41 @@ class ChannelCustomizationServiceImpl {
     this.persist();
   }
 
+  /** Channels explicitly assigned to `groupKey` via an override — the only way
+   *  a channel ever ends up in a user-created folder, so this is that folder's
+   *  full membership count (unlike a source group, which also has members with
+   *  no override at all). Used to size a delete confirmation. */
+  groupOverrideCount(groupKey: string): number {
+    let count = 0;
+    for (const key in this.record.overrides) {
+      if (this.record.overrides[key].group === groupKey) count++;
+    }
+    return count;
+  }
+
+  /**
+   * Delete a user-created folder: every channel assigned to it falls back to
+   * its source group (the override is cleared, not the channel), its rename/
+   * hidden state is dropped, and stale references in the order/favorite lists
+   * go with it. A no-op for a real (provider) group — those aren't
+   * user-created and this never removes one.
+   */
+  removeCustomGroup(groupKey: string): void {
+    const at = this.record.customGroups.indexOf(groupKey);
+    if (at < 0) return;
+    this.record.customGroups.splice(at, 1);
+    delete this.record.groupOverrides[groupKey];
+    this.record.groupOrder = this.record.groupOrder.filter((key) => key !== groupKey);
+    this.record.favoriteGroups = this.record.favoriteGroups.filter((key) => key !== groupKey);
+    for (const key in this.record.overrides) {
+      const ov = this.record.overrides[key];
+      if (ov.group !== groupKey) continue;
+      delete ov.group;
+      if (isEmpty(ov)) delete this.record.overrides[key];
+    }
+    this.persist();
+  }
+
   /** Rank of a group key in the custom order; unlisted groups keep discovery order. */
   groupRank(groupKey: string, discoveryIndex: number): number {
     const at = this.record.groupOrder.indexOf(groupKey);

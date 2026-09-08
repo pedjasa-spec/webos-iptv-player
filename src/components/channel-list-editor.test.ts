@@ -199,6 +199,10 @@ beforeEach(() => {
       fields: [candidate.channelId, candidate.name, channel.name],
       sourceIndex: 0,
     })));
+  // ConfirmationPrompt (used by the folder-delete flow) mounts itself straight
+  // onto document.body, outside `container` — clear any prior test's leftover
+  // node before appending a fresh container.
+  document.body.innerHTML = '';
   container = document.createElement('div');
   document.body.appendChild(container);
   onSelect = vi.fn();
@@ -1055,6 +1059,79 @@ describe('ChannelList edit mode', () => {
     expect(data.raw[0].group).toBe('Headlines');
     expect(data.raw[0].sourceGroup).toBe('News');
     expect(ChannelCustomizationService.groupLabel('News')).toBe('Headlines');
+  });
+
+  function grabFolder(): void {
+    ChannelCustomizationService.setGroup(channelKey(data.raw[0]), 'Custom');
+    ChannelCustomizationService.setGroup(channelKey(data.raw[2]), 'Custom');
+    playlistMock.applyCustomization();
+    enterEdit();
+    const folder = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
+      .find(el => el.dataset.group === 'source:Custom');
+    hover(folder!);
+    list.handleAction('select');
+  }
+
+  it('red on a grabbed folder asks for confirmation, naming it and its channel count', () => {
+    grabFolder();
+    list.handleAction('red');
+    expect(document.querySelector('.confirmation-title')?.textContent).toBe('Delete "Custom"?');
+    expect(document.querySelector('.confirmation-message')?.textContent).toContain('2 channels');
+    // The grab/rename/move flow underneath must stay untouched until confirmed.
+    expect(ChannelCustomizationService.customGroups).toEqual(['Custom']);
+  });
+
+  it('confirming deletes the folder and its channels fall back to their source group', () => {
+    grabFolder();
+    list.handleAction('red');
+    list.handleAction('left'); // focus the destructive "Delete" button
+    list.handleAction('select');
+
+    expect(document.querySelector('.confirmation-prompt')?.classList.contains('hidden')).toBe(true);
+    expect(ChannelCustomizationService.customGroups).toEqual([]);
+    expect(data.raw[0].group).toBe('News');
+    expect(data.raw[2].group).toBe('News');
+    expect(container.querySelector('[data-group="source:Custom"]')).toBeNull();
+  });
+
+  it('cancelling (Back) keeps the folder and its channels intact', () => {
+    grabFolder();
+    list.handleAction('red');
+    expect(list.handleBack()).toBe(true);
+
+    expect(document.querySelector('.confirmation-prompt')?.classList.contains('hidden')).toBe(true);
+    expect(ChannelCustomizationService.customGroups).toEqual(['Custom']);
+    expect(data.raw[0].group).toBe('Custom');
+    expect(list.isEditing).toBe(true); // Back closed the prompt, not edit mode
+  });
+
+  it('red on a grabbed real (non-custom) group still does nothing', () => {
+    enterEdit();
+    const news = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
+      .find(el => el.dataset.group === 'source:News');
+    hover(news!);
+    list.handleAction('select');
+    list.handleAction('red');
+    expect(document.querySelector('.confirmation-dialog')).toBeNull();
+    expect(container.querySelector('.group-picker')).toBeNull();
+  });
+
+  it('the Red hint reads Delete for a grabbed folder and Group otherwise', () => {
+    ChannelCustomizationService.setGroup(channelKey(data.raw[0]), 'Custom');
+    playlistMock.applyCustomization();
+    enterEdit();
+    const hint = () => container.querySelector('[data-edit-action="red"]')?.textContent?.trim();
+
+    const folder = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
+      .find(el => el.dataset.group === 'source:Custom');
+    hover(folder!);
+    list.handleAction('select');
+    expect(hint()).toBe('Delete');
+
+    list.handleAction('select'); // drop the folder
+    hover(channelItems()[0]);
+    list.handleAction('select'); // grab a channel instead
+    expect(hint()).toBe('Group');
   });
 
   it('keeps the stable key when renaming an empty custom group again', () => {

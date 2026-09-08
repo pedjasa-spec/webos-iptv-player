@@ -698,6 +698,17 @@ describe('ChannelList interaction', () => {
     expect(groups.map(g => g.dataset.group)).toEqual(['source:News', 'source:Sports']);
   });
 
+  it('bands folders above favorited groups, which stay above the rest', () => {
+    ChannelCustomizationService.setGroup(channelKey(data.channels[0]), 'Custom');
+    playlistMock.applyCustomization();
+    ChannelCustomizationService.toggleGroupFavorite('Sports');
+    list.render();
+
+    const groups = Array.from(container.querySelectorAll<HTMLElement>('[data-group^="source:"]'))
+      .map(g => g.dataset.group);
+    expect(groups).toEqual(['source:Custom', 'source:Sports', 'source:News']);
+  });
+
   it('keeps focus on a group favorited far outside the rendered window', () => {
     const original = playlistMock.getGroupsForPlaylist;
     playlistMock.getGroupsForPlaylist = () =>

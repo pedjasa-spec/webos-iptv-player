@@ -12,7 +12,8 @@ import type {
 } from '../services/epg-service';
 import { BACK_ICON, CHECK_ICON, CLOCK_ICON, GUIDE_ICON, SEARCH_ICON } from './icons';
 import { showToast } from './toast';
-import { t } from '../i18n';
+import { ConfirmationPrompt } from './confirmation-prompt';
+import { t, tp } from '../i18n';
 import { CONFIG } from '../config';
 import { VirtualList } from '../utils/virtual-list';
 import { formatEpgOffset } from '../utils/epg-offset';
@@ -76,6 +77,7 @@ export class ChannelListEditor {
   private pointerClickReset: ReturnType<typeof setTimeout> | null = null;
   private lastDragPlacement = '';
   private editActionTarget: EditTarget | null = null;
+  private readonly confirmationPrompt = new ConfirmationPrompt();
 
   constructor(
     private container: HTMLElement,
@@ -283,6 +285,10 @@ export class ChannelListEditor {
   }
 
   handleBack(): boolean {
+    if (this.confirmationPrompt.visible) {
+      this.confirmationPrompt.handleAction('back');
+      return true;
+    }
     if (this.newGroupOpen) {
       this.newGroupOpen = false;
       this.options.render();
@@ -327,6 +333,10 @@ export class ChannelListEditor {
   }
 
   handleAction(action: Action): boolean {
+    if (this.confirmationPrompt.visible) {
+      this.confirmationPrompt.handleAction(action);
+      return true;
+    }
     if (this.favoriteSelection) return this.handleFavoriteAction(action);
     if (!this.editing) return false;
     return this.handleEditAction(action);
@@ -587,7 +597,7 @@ export class ChannelListEditor {
         this.startRename();
         return true;
       case 'red':
-        this.openGroupPicker();
+        this.handleRedAction();
         return true;
       default:
         return false;
@@ -910,15 +920,45 @@ export class ChannelListEditor {
         .trim().toLowerCase() === normalized);
   }
 
-  private openGroupPicker(): void {
+  // Red on a channel opens the move-to-group picker; on a folder (a
+  // user-created group) it deletes it, after confirmation — the same key was
+  // a silent no-op on any group before, so this doesn't take anything away.
+  // A real (provider) group still does nothing: only user-created ones can
+  // be deleted.
+  private handleRedAction(): void {
     const target = this.grabbed;
     if (!target) {
       showToast(t('channel.editSelectFirst'));
       return;
     }
-    if (target.kind !== 'channel') return;
-    this.groupPickerFor = target.key;
+    if (target.kind === 'channel') {
+      this.openGroupPicker(target.key);
+    } else if (ChannelCustomizationService.customGroups.includes(target.key)) {
+      this.confirmDeleteGroup(target.key);
+    }
+  }
+
+  private openGroupPicker(channelKeyToMove: string): void {
+    this.groupPickerFor = channelKeyToMove;
     this.options.render();
+  }
+
+  private confirmDeleteGroup(groupKey: string): void {
+    const name = ChannelCustomizationService.groupLabel(groupKey);
+    const count = ChannelCustomizationService.groupOverrideCount(groupKey);
+    this.confirmationPrompt.show({
+      title: t('channel.editDeleteGroupTitle', { name }),
+      message: t('channel.editDeleteGroupMessage', { channels: tp('channel.count', count) }),
+      confirmLabel: t('channel.editDeleteGroup'),
+      cancelLabel: t('common.cancel'),
+      onConfirm: () => {
+        ChannelCustomizationService.removeCustomGroup(groupKey);
+        this.grabbed = null;
+        this.applyEdit();
+        this.options.render();
+      },
+      onCancel: () => {},
+    });
   }
 
   private chooseGroupOption(): void {
@@ -1256,6 +1296,8 @@ export class ChannelListEditor {
 
   private renderEditHints(): Safe {
     const grabbed = !!this.grabbed;
+    const grabbedFolder = this.grabbed?.kind === 'group'
+      && ChannelCustomizationService.customGroups.includes(this.grabbed.key);
     return html`
       <div class="edit-hints">
         <span class="edit-hint"><span class="edit-key key-ok">OK</span><span>${
@@ -1268,7 +1310,7 @@ export class ChannelListEditor {
                   t('channel.editRename')}</span></button>
         <button class="edit-hint edit-action" data-key="edit:red" data-focusable
                 data-edit-action="red"><span class="edit-key key-red"></span><span>${
-                  t('channel.editGroup')}</span></button>
+                  grabbedFolder ? t('channel.editDeleteGroup') : t('channel.editGroup')}</span></button>
         <button class="edit-hint edit-action" data-key="edit:epg" data-focusable
                 data-epg-action>
           <span class="edit-action-icon">${raw(GUIDE_ICON)}</span>

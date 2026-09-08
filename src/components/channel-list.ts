@@ -457,7 +457,26 @@ export class ChannelList {
         favoriteKey: isSource ? key : undefined,
       };
     });
-    return applyFavoriteOrder(entries, ChannelCustomizationService.favoriteGroups);
+
+    // Folders (user-created groups) get their own band above favorited/other
+    // groups: Favorites/Recently Watched, then folders (creation order — no
+    // manual reorder yet, same call as favorite-group order), then favorited
+    // groups, then the rest.
+    const folderRank = new Map(
+      ChannelCustomizationService.customGroups.map((key, index) => [key, index]),
+    );
+    const pinned: SidebarEntry[] = [];
+    const folders: SidebarEntry[] = [];
+    const rest: SidebarEntry[] = [];
+    for (const entry of entries) {
+      if (!entry.favoritable) pinned.push(entry);
+      else if (entry.favoriteKey !== undefined && folderRank.has(entry.favoriteKey)) {
+        folders.push(entry);
+      } else rest.push(entry);
+    }
+    folders.sort((a, b) => folderRank.get(a.favoriteKey!)! - folderRank.get(b.favoriteKey!)!);
+
+    return [...pinned, ...folders, ...applyFavoriteOrder(rest, ChannelCustomizationService.favoriteGroups)];
   }
 
   setPlaying(idx: number, catchupStart?: number | null): void {

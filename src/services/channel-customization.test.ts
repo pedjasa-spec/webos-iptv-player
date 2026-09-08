@@ -124,6 +124,40 @@ describe('ChannelCustomizationService', () => {
     expect(ChannelCustomizationService.applyTo(fixture())[2].group).toBe('Sports');
   });
 
+  it('counts channels explicitly assigned to a group by override', () => {
+    expect(ChannelCustomizationService.groupOverrideCount('Custom')).toBe(0);
+    ChannelCustomizationService.setGroup(KEY_A, 'Custom');
+    ChannelCustomizationService.setGroup(KEY_B, 'Custom');
+    expect(ChannelCustomizationService.groupOverrideCount('Custom')).toBe(2);
+    // A channel's natural (source) group members don't count — only overrides do.
+    expect(ChannelCustomizationService.groupOverrideCount('Sports')).toBe(0);
+  });
+
+  it('deletes a custom group, falling its channels back to their source group', () => {
+    ChannelCustomizationService.setGroup(KEY_A, 'Custom');
+    ChannelCustomizationService.setGroup(KEY_B, 'Custom');
+    ChannelCustomizationService.renameGroup('Custom', 'Renamed');
+    ChannelCustomizationService.toggleGroupFavorite('Custom');
+    ChannelCustomizationService.moveGroup(['News', 'Sports', 'Custom'], 'Custom', 'News', false);
+    expect(ChannelCustomizationService.customGroups).toEqual(['Custom']);
+
+    ChannelCustomizationService.removeCustomGroup('Custom');
+
+    expect(ChannelCustomizationService.customGroups).toEqual([]);
+    expect(ChannelCustomizationService.groupOverrideCount('Custom')).toBe(0);
+    expect(ChannelCustomizationService.isGroupFavorite('Custom')).toBe(false);
+    expect(ChannelCustomizationService.groupLabel('Custom')).toBe('Custom'); // rename dropped
+    const channels = ChannelCustomizationService.applyTo(fixture());
+    expect(channels[0].group).toBe('News');
+    expect(channels[1].group).toBe('News');
+  });
+
+  it('does nothing when asked to delete a real (non-custom) group', () => {
+    ChannelCustomizationService.removeCustomGroup('News');
+    expect(ChannelCustomizationService.customGroups).toEqual([]);
+    expect(ChannelCustomizationService.applyTo(fixture())[0].group).toBe('News');
+  });
+
   it('sets and clears a manual EPG channel mapping', () => {
     const info = vi.spyOn(console, 'log').mockImplementation(() => {});
     ChannelCustomizationService.setEpgChannel(KEY_A, 'source::epg-a');
