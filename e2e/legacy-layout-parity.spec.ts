@@ -507,7 +507,7 @@ const XTREAM_SCREENS: Screen[] = [
       await expect(p.locator('.tab-bar-item[data-section="movies"]')).toBeVisible();
       await enterTab(p, 'movies');
       await expect(p.locator('#view-movies .catalog-tile').first()).toBeVisible();
-      await expect(p.locator('#view-movies .catalog-rail-title').first())
+      await expect(p.locator('#view-movies .catalog-grid-title').first())
         .toHaveText('Continue Watching');
     },
   },

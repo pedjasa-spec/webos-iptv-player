@@ -114,13 +114,13 @@ test('switching account in the dropdown reloads Movies and updates the avatar', 
 
   // Enter Movies for the default (Alpha) account.
   await enterTab(page, 'movies');
-  await expect(page.locator('#view-movies .catalog-rail-title')).toContainText('Cat Alpha');
+  await expect(page.locator('#view-movies .catalog-grid-title')).toContainText('Cat Alpha');
   await expect(page.locator('.catalog-tile[data-item-id="10"]')).toContainText('Alpha Movie');
 
   // Switch to Bravo from the avatar dropdown; Movies reloads for Bravo.
   await openAccountMenu(page);
   await pickAccount(page, 'a2');
-  await expect(page.locator('#view-movies .catalog-rail-title')).toContainText('Cat Bravo');
+  await expect(page.locator('#view-movies .catalog-grid-title')).toContainText('Cat Bravo');
   await expect(page.locator('.catalog-tile[data-item-id="20"]')).toContainText('Bravo Movie');
   await expect(page.locator('.catalog-tile[data-item-id="10"]')).toHaveCount(0);
 
@@ -145,7 +145,7 @@ test('the selected account persists across a reload', async ({ page }) => {
   // The stored choice is restored: avatar is still Bravo and Movies serves Bravo.
   await expect(page.locator('.account-avatar')).toHaveText('B');
   await enterTab(page, 'movies');
-  await expect(page.locator('#view-movies .catalog-rail-title')).toContainText('Cat Bravo');
+  await expect(page.locator('#view-movies .catalog-grid-title')).toContainText('Cat Bravo');
 });
 
 test('switching on Live only persists, then applies when Movies is next opened', async ({ page }) => {
@@ -162,6 +162,6 @@ test('switching on Live only persists, then applies when Movies is next opened',
 
   // Entering Movies now uses the selected (Bravo) account.
   await enterTab(page, 'movies');
-  await expect(page.locator('#view-movies .catalog-rail-title')).toContainText('Cat Bravo');
+  await expect(page.locator('#view-movies .catalog-grid-title')).toContainText('Cat Bravo');
   await expect(page.locator('.catalog-tile[data-item-id="20"]')).toContainText('Bravo Movie');
 });

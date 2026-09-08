@@ -50,7 +50,7 @@ test('browse Series, open a detail, and play an episode', async ({ page }) => {
   await enterTab(page, 'series');
   await expect(page.locator('#view-series')).toBeVisible();
 
-  await expect(page.locator('#view-series .catalog-rail-title')).toContainText('Cat A');
+  await expect(page.locator('#view-series .catalog-grid-title')).toContainText('Cat A');
   await expect(page.locator('.catalog-tile[data-item-id="1"]')).toContainText('Series One');
 
   // Open the series detail. Dispatch an explicit bubbling nav:hover so
@@ -95,7 +95,7 @@ test('Back walks Series detail -> browse -> Live instead of ejecting', async ({ 
   // First Back steps detail -> browse: still inside Series, not ejected to Live.
   await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 461, bubbles: true })));
   await expect(page.locator('#view-series')).toBeVisible();
-  await expect(page.locator('#view-series .catalog-rail-title')).toContainText('Cat A');
+  await expect(page.locator('#view-series .catalog-grid-title')).toContainText('Cat A');
   await expect(page.locator('#view-channels')).toBeHidden();
 
   // Second Back from the browse top level returns to Live.

@@ -85,7 +85,7 @@ test('browse Movies, open a detail, and start playback', async ({ page }) => {
   await enterTab(page, 'movies');
   await expect(page.locator('#view-movies')).toBeVisible();
 
-  await expect(page.locator('#view-movies .catalog-rail-title')).toContainText('Cat A');
+  await expect(page.locator('#view-movies .catalog-grid-title')).toContainText('Cat A');
   await expect(page.locator('.catalog-tile[data-item-id="10"]')).toContainText('Movie One');
 
   // Focus the poster and open its detail. Dispatch an explicit bubbling
@@ -129,7 +129,7 @@ test('Back walks Movies detail -> browse -> Live instead of ejecting', async ({ 
   // First Back steps detail -> browse: still inside Movies, not ejected to Live.
   await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 461, bubbles: true })));
   await expect(page.locator('#view-movies')).toBeVisible();
-  await expect(page.locator('#view-movies .catalog-browse')).toBeVisible();
+  await expect(page.locator('#view-movies .catalog-grid')).toBeVisible();
   await expect(page.locator('#view-channels')).toBeHidden();
 
   // Second Back from the browse top level returns to Live.

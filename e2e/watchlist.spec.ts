@@ -168,6 +168,9 @@ test('shows Resume on return and keeps three movie actions at a stable height', 
   await page.goto('/');
 
   await enterTab(page, 'movies');
+  // A real category loads by default; the pinned Watchlist row is a separate
+  // sidebar entry now, so its tiles only render once it's selected.
+  await page.locator('[data-group="__watchlist__"]').click();
   await focusAndSelect(page, '#view-movies [data-watchlist-item="10"]');
   await focusAndSelect(page, '#view-movies [data-action="play"]');
   await expect(page.locator('#view-player')).toBeVisible();
@@ -213,6 +216,7 @@ test('keeps three pseudo-localized movie actions on one row without clipping', a
   await page.goto('/?pseudo=1');
 
   await enterTab(page, 'movies');
+  await page.locator('[data-group="__watchlist__"]').click();
   await focusAndSelect(page, '#view-movies [data-watchlist-item="10"]');
 
   const actions = page.locator('#view-movies .detail-btn');
@@ -242,6 +246,7 @@ test('auto-plays the next Watchlist movie and removes each completed movie', asy
   await page.goto('/');
 
   await enterTab(page, 'movies');
+  await page.locator('[data-group="__watchlist__"]').click();
   await focusAndSelect(page, '#view-movies [data-watchlist-item="10"]');
   await focusAndSelect(page, '#view-movies [data-action="play"]');
   await expect(page.locator('#player-osd .osd-channel-name')).toHaveText('Movie One');
