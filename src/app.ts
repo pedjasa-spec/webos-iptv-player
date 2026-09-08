@@ -1255,7 +1255,7 @@ class App {
       this.tabBar.setActive('live');
       this.showView('channels');
       this.channelList.render();
-      this.channelList.enterEditMode('builtin:all');
+      this.channelList.enterEditMode();
       return;
     }
     if (action === 'reset') {

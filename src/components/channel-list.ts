@@ -334,8 +334,16 @@ export class ChannelList {
     return this.editor.isEditing;
   }
 
-  enterEditMode(group: ChannelGroupId = this.currentGroup): void {
+  enterEditMode(group: ChannelGroupId = this.editableGroup()): void {
     this.editor.enterEditMode(group);
+  }
+
+  // Recently Watched can't be edited (see ChannelListEditor.enterEditMode), so
+  // a caller that doesn't name a group explicitly — Settings' "Edit channel
+  // list", in particular, reachable from any prior view — falls back to All
+  // instead of silently doing nothing.
+  private editableGroup(): ChannelGroupId {
+    return this.currentGroup === 'builtin:recently-watched' ? 'builtin:all' : this.currentGroup;
   }
 
   exitEditMode(): void {

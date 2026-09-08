@@ -460,15 +460,27 @@ describe('ChannelList.render', () => {
     expect(container.querySelector('.edit-hints')).toBeNull();
   });
 
-  it('opens Settings-driven channel editing in All', () => {
+  it('falls back to All when Settings opens editing from Recently Watched', () => {
     list.render();
     hover(container.querySelector<HTMLElement>('[data-group="builtin:recently-watched"]')!);
     list.handleAction('select');
-    list.enterEditMode('builtin:all');
+    list.enterEditMode(); // Settings' "Edit channel list" calls with no group
     expect(list.isEditing).toBe(true);
     expect(container.querySelector('[data-group="builtin:all"]')?.classList.contains('active'))
       .toBe(true);
     expect(channelItems()).toHaveLength(3);
+  });
+
+  it('opens Settings-driven channel editing scoped to the currently selected group', () => {
+    list.render();
+    hover(container.querySelector<HTMLElement>('[data-group="source:Sports"]')!);
+    list.handleAction('select');
+    list.enterEditMode(); // no explicit group — same call Settings makes
+    expect(list.isEditing).toBe(true);
+    expect(container.querySelector('[data-group="source:Sports"]')?.classList.contains('active'))
+      .toBe(true);
+    expect(channelItems()).toHaveLength(1);
+    expect(container.textContent).toContain('Bravo');
   });
 
   it('escapes a malicious channel name instead of rendering live HTML (XSS)', () => {
