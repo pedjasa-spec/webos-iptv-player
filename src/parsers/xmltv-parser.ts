@@ -17,6 +17,10 @@ export interface XMLTVParseOptions {
   channelNames?: ReadonlySet<string>;
   /** Retain lightweight channel metadata while still filtering programme arrays. */
   retainChannelCatalog?: boolean;
+  /** How many days before/after `nowMs` to keep. Defaults to 7/7 (unchanged)
+   *  for callers that don't care — real loads pass CONFIG.EPG.RETENTION_*. */
+  daysBack?: number;
+  daysForward?: number;
 }
 
 export interface XMLTVParseStats {
@@ -83,8 +87,8 @@ export class XMLTVStreamParser {
 
   constructor(private readonly options: XMLTVParseOptions = {}) {
     const now = options.nowMs ?? Date.now();
-    this.minTime = now - 7 * DAY_MS;
-    this.maxTime = now + 7 * DAY_MS;
+    this.minTime = now - (options.daysBack ?? 7) * DAY_MS;
+    this.maxTime = now + (options.daysForward ?? 7) * DAY_MS;
     const { channelIds, channelNames } = options;
     const filtering = (channelIds?.size ?? 0) > 0 || (channelNames?.size ?? 0) > 0;
     this.acceptedIds = filtering ? new Set(channelIds ?? []) : null;

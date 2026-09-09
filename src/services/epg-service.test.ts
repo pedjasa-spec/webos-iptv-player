@@ -553,7 +553,10 @@ describe('EpgService channel pre-filter', () => {
     vi.mocked(parseXMLTVWithStats).mockClear();
     EpgService.reset();
     await EpgService.load([source('http://a', ['a'])]);
-    expect(vi.mocked(parseXMLTVWithStats).mock.calls[0][1]).toEqual({});
+    expect(vi.mocked(parseXMLTVWithStats).mock.calls[0][1]).toEqual({
+      daysBack: CONFIG.EPG.RETENTION_DAYS_BACK,
+      daysForward: CONFIG.EPG.RETENTION_DAYS_FORWARD,
+    });
   });
 
   it('keeps an unmatched filter instead of retaining the entire feed', async () => {

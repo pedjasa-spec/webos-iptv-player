@@ -224,6 +224,14 @@ invalidates a structurally valid but now unrelated parsed playlist.
 Reads update `lastAccessedAt` in a best-effort follow-up transaction. Failure to
 write this bookkeeping does not turn a valid cache hit into a miss.
 
+The 6-hour program guide lifetime above governs how often the feed is
+*re-fetched*; a separate setting governs how much of one fetch is *kept*.
+`CONFIG.EPG.RETENTION_DAYS_BACK`/`RETENTION_DAYS_FORWARD` (1/2 by default) trim
+programmes outside that window at parse time, in the worker, before they ever
+reach either the in-memory guide or `epg-cache` — a feed with a long lookahead
+or many channels can otherwise produce a single cached entry large enough to
+dwarf the budget above on its own.
+
 The app does not provide account-based cloud sync or a remote backup of this
 data. Playlist providers and subtitle services still receive the requests
 needed to download their content.
@@ -264,13 +272,17 @@ The budget adapts to the storage quota reported by
 `navigator.storage.estimate()`:
 
 ```text
-budget = min(floor(reportedQuota * 0.5), 1 GiB)
+budget = min(reportedQuota - reservedForUserData, 1 GiB)
 ```
 
-If the TV cannot report a quota, the app uses a 384 MiB fallback budget. The
-result can therefore differ between TV models, webOS versions, and available
-storage. A displayed budget of 75 MiB is normal when webOS grants the app a
-quota of about 150 MiB.
+`reservedForUserData` is a fixed 20 MiB the cache may never grow into —
+favorites, channel customization (order/hide/rename/regroup/folders),
+watchlist, and the rest of `idb-user-data.ts` share this same IndexedDB
+database, and must never be crowded out by how large a playlist or EPG feed
+happens to be. If the TV cannot report a quota, the app uses a 384 MiB
+fallback budget. The result can therefore differ between TV models, webOS
+versions, and available storage. A displayed budget of 130 MiB is normal
+when webOS grants the app a quota of about 150 MiB.
 
 The displayed total covers only the managed cache. Small settings, personal
 records, browser-managed image files, and original LAN-uploaded M3U files are
@@ -279,8 +291,10 @@ not included.
 ## Automatic cleanup
 
 The app checks the cache before and after writes. Cleanup begins when the cache
-would exceed its soft budget or when overall app storage approaches 80% of the
-quota reported by webOS.
+would exceed its soft budget or when overall app storage approaches the same
+quota-minus-reserve ceiling described above — a backstop for when real origin
+usage (user data, browser overhead) drifts away from the app's own cache
+accounting.
 
 Cleanup removes data in this order:
 
@@ -298,7 +312,7 @@ More precisely, an incoming write computes:
 
 ```text
 cacheOver  = currentManagedCache + incomingDelta - softBudget
-originOver = reportedOriginUsage + incomingDelta - 80% of reportedQuota
+originOver = reportedOriginUsage + incomingDelta - (reportedQuota - reservedForUserData)
 required   = max(cacheOver, originOver)
 ```
 

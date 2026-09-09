@@ -73,6 +73,33 @@ describe('parseXMLTV', () => {
     expect(programmes['c1']).toBeUndefined();
   });
 
+  it('honors a configured retention window instead of the 7-day default', () => {
+    const now = new Date('2026-01-10T12:00:00Z');
+    const tooFarBack = new Date('2026-01-08T00:00:00Z'); // 2 days back
+    const keptBack = new Date('2026-01-09T12:00:00Z'); // 1 day back
+    const keptForward = new Date('2026-01-12T00:00:00Z'); // ~2 days forward
+    const tooFarForward = new Date('2026-01-13T12:00:00Z'); // ~3 days forward
+    const stop = (d: Date) => new Date(d.getTime() + 60 * 60 * 1000);
+    const programme = (start: Date, title: string) => `
+      <programme channel="c1" start="${xmltvDate(start)}" stop="${xmltvDate(stop(start))}">
+        <title>${title}</title>
+      </programme>`;
+    const xml = `<?xml version="1.0"?>
+      <tv>
+        <channel id="c1"><display-name>Chan</display-name></channel>
+        ${programme(tooFarBack, 'TooOld')}
+        ${programme(keptBack, 'KeptBack')}
+        ${programme(keptForward, 'KeptForward')}
+        ${programme(tooFarForward, 'TooNew')}
+      </tv>`;
+    const { programmes } = parseXMLTVWithStats(xml, {
+      nowMs: now.getTime(),
+      daysBack: 1,
+      daysForward: 2,
+    }).data;
+    expect(programmes['c1'].map(p => p.title)).toEqual(['KeptBack', 'KeptForward']);
+  });
+
   it('decodes entities, CDATA, nested text, and stray ampersands', () => {
     const start = new Date();
     const stop = new Date(start.getTime() + 60 * 60 * 1000);

@@ -429,13 +429,17 @@ class EpgServiceImpl {
     }
     const done = log.time(`fetch '${source.url}'`);
     try {
-      const { data: result, stats } = await fetchAndParseXMLTV(source.url, 120000, filter
-        ? {
-            channelIds: filter.ids,
-            channelNames: filter.names,
-            retainChannelCatalog: true,
-          }
-        : {});
+      const { data: result, stats } = await fetchAndParseXMLTV(source.url, 120000, {
+        daysBack: CONFIG.EPG.RETENTION_DAYS_BACK,
+        daysForward: CONFIG.EPG.RETENTION_DAYS_FORWARD,
+        ...(filter
+          ? {
+              channelIds: filter.ids,
+              channelNames: filter.names,
+              retainChannelCatalog: true,
+            }
+          : {}),
+      });
       if (revision !== this.revision) {
         done();
         return;

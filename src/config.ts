@@ -58,6 +58,12 @@ export const CONFIG = {
     TIME_SLOT_MINUTES: 30,
     OFFSET_STEP_MINUTES: 15,
     OFFSET_MAX_MINUTES: 12 * 60,
+    // How much of the XMLTV feed is actually kept in memory and cached.
+    // A feed with many channels and a long lookahead can dwarf the IndexedDB
+    // storage quota on its own — trimmed here, at parse time, so both the
+    // in-memory guide and the persisted cache shrink together.
+    RETENTION_DAYS_BACK: 1,
+    RETENTION_DAYS_FORWARD: 2,
   },
 
   // Xtream Movies/Series catalog + resume tuning.

@@ -21,6 +21,11 @@ const log = createLogger('CacheStorage');
 const CACHE_CATEGORIES = ['playlist', 'epg', 'catalog', 'subtitle', 'health'] as const;
 const FALLBACK_BUDGET_BYTES = 384 * 1024 * 1024;
 const MAX_BUDGET_BYTES = 1024 * 1024 * 1024;
+// Never let the cache grow into this much of the origin's real quota — it's
+// reserved for favorites/channel-state/watchlist/etc. (idb-user-data.ts),
+// which share this same IndexedDB database but must never be crowded out by
+// how big a playlist or EPG feed happens to be.
+const RESERVED_USER_DATA_BYTES = 20 * 1024 * 1024;
 const SUBTITLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CLEANUP_MARGIN_BYTES = 4 * 1024 * 1024;
 const PLAYLIST_CACHE_KEY = 'combined';
@@ -527,7 +532,7 @@ async function cachedStorageEstimate(): Promise<{ usage: number | null; quota: n
 
 function budgetForQuota(quota: number | null): number {
   if (quota === null || quota <= 0) return FALLBACK_BUDGET_BYTES;
-  return Math.min(Math.floor(quota * 0.5), MAX_BUDGET_BYTES);
+  return Math.min(Math.max(0, quota - RESERVED_USER_DATA_BYTES), MAX_BUDGET_BYTES);
 }
 
 export async function getCacheUsage(): Promise<CacheUsageSummary> {
@@ -666,8 +671,10 @@ async function ensureCapacity(deltaBytes: number): Promise<void> {
   const estimate = await cachedStorageEstimate();
   const budgetBytes = budgetForQuota(estimate.quota);
   const cacheOver = metadata.total.bytes + deltaBytes - budgetBytes;
+  // Same reserve as budgetForQuota — a backstop against real origin usage
+  // (user data, browser overhead) drifting away from our own cache accounting.
   const originOver = estimate.quota !== null && estimate.usage !== null
-    ? estimate.usage + deltaBytes - Math.floor(estimate.quota * 0.8)
+    ? estimate.usage + deltaBytes - Math.max(0, estimate.quota - RESERVED_USER_DATA_BYTES)
     : 0;
   const required = Math.max(cacheOver, originOver);
   if (required > 0) {

@@ -279,6 +279,26 @@ describe('idb-cache', () => {
     expect((await getCacheUsage()).total).toEqual({ bytes: 0, entries: 0 });
   });
 
+  it('reserves a fixed floor for user data instead of a percentage of the quota', async () => {
+    const storageDescriptor = Object.getOwnPropertyDescriptor(navigator, 'storage');
+    Object.defineProperty(navigator, 'storage', {
+      configurable: true,
+      value: { estimate: async () => ({ usage: 0, quota: 150 * 1024 * 1024 }) },
+    });
+    try {
+      const usage = await getCacheUsage();
+      // 150 MiB quota, 20 MiB reserved for favorites/channel-state/etc. — not
+      // the old 50%-of-quota figure (which would be 75 MiB here).
+      expect(usage.budgetBytes).toBe(130 * 1024 * 1024);
+    } finally {
+      if (storageDescriptor) {
+        Object.defineProperty(navigator, 'storage', storageDescriptor);
+      } else {
+        delete (navigator as Navigator & { storage?: StorageManager }).storage;
+      }
+    }
+  });
+
   it('touches access metadata without rewriting a cached payload', async () => {
     await setCachedCatalog('x1|vod_all', Array.from({ length: 100 }, (_, index) => index));
     const db = await openPersistenceDb();

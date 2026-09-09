@@ -21,6 +21,8 @@ export async function fetchAndParseXMLTV(
         channelIds: options.channelIds ? Array.from(options.channelIds) : undefined,
         channelNames: options.channelNames ? Array.from(options.channelNames) : undefined,
         retainChannelCatalog: options.retainChannelCatalog,
+        daysBack: options.daysBack,
+        daysForward: options.daysForward,
       },
     });
     if (result.metrics.attempts > 1) logRetry();

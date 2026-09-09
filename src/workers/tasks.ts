@@ -9,6 +9,8 @@ export interface XMLTVWorkerRequest {
     channelIds?: string[];
     channelNames?: string[];
     retainChannelCatalog?: boolean;
+    daysBack?: number;
+    daysForward?: number;
   };
 }
 
