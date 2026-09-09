@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Channel } from '../types';
 import type { RecentlyWatchedItem } from '../services/recently-watched';
 
@@ -539,7 +539,7 @@ describe('ChannelList interaction', () => {
   it('selecting a focused channel plays it', () => {
     hover(channelItems()[1]);
     list.handleAction('select');
-    expect(onSelect).toHaveBeenCalledWith(1);
+    expect(onSelect).toHaveBeenCalledWith(1, undefined, { group: 'builtin:all', playlist: undefined });
   });
 
   it('reports virtual moves so Up does not hand focus to the tab bar', () => {
@@ -548,7 +548,7 @@ describe('ChannelList interaction', () => {
       .toBe('1');
     expect(list.handleAction('up')).toBe(true);
     list.handleAction('select');
-    expect(onSelect).toHaveBeenCalledWith(0);
+    expect(onSelect).toHaveBeenCalledWith(0, undefined, { group: 'builtin:all', playlist: undefined });
   });
 
   it('selecting a recent live row starts live playback', () => {
@@ -563,7 +563,7 @@ describe('ChannelList interaction', () => {
     list.handleAction('select');
     hover(channelItems()[0]);
     list.handleAction('select');
-    expect(onSelect).toHaveBeenCalledWith(1);
+    expect(onSelect).toHaveBeenCalledWith(1, undefined, { group: 'builtin:recently-watched', playlist: undefined });
   });
 
   it('places recent live health before the Live badge', () => {
@@ -619,7 +619,7 @@ describe('ChannelList interaction', () => {
     hover(channelItems()[0]);
     list.handleAction('select');
     await Promise.resolve();
-    expect(onSelect).toHaveBeenCalledWith(0, info);
+    expect(onSelect).toHaveBeenCalledWith(0, info, { group: 'builtin:recently-watched', playlist: undefined });
   });
 
   it('removes an unavailable recent Catch-up row and shows a toast', async () => {
@@ -656,7 +656,7 @@ describe('ChannelList interaction', () => {
     document.elementFromPoint = () => target;
     container.dispatchEvent(new MouseEvent('click', { clientX: 100, clientY: 50, bubbles: true }));
     document.elementFromPoint = orig;
-    expect(onSelect).toHaveBeenCalledWith(1);
+    expect(onSelect).toHaveBeenCalledWith(1, undefined, { group: 'builtin:all', playlist: undefined });
   });
 
   it('switches group on a pointer click over a group item', () => {
@@ -763,7 +763,7 @@ describe('ChannelList interaction', () => {
 
   it('a number action plays that channel (1-based)', () => {
     list.handleAction('number', { number: 2 });
-    expect(onSelect).toHaveBeenCalledWith(1);
+    expect(onSelect).toHaveBeenCalledWith(1, undefined, { group: 'builtin:all', playlist: undefined });
   });
 
   it('a number action focuses and marks the channel it tuned', () => {
@@ -779,7 +779,7 @@ describe('ChannelList interaction', () => {
 
     list.handleAction('number', { number: 1 }); // Alpha, outside the Sports group
 
-    expect(onSelect).toHaveBeenCalledWith(0);
+    expect(onSelect).toHaveBeenCalledWith(0, undefined, { group: 'builtin:all', playlist: undefined });
     expect(channelItems()).toHaveLength(3);
     expect(channelItems()[0].classList.contains('focused')).toBe(true);
     expect(channelItems()[0].classList.contains('playing')).toBe(true);
@@ -870,5 +870,86 @@ describe('ChannelList morph lifecycle', () => {
     list.render();
     // Same DOM node, .focused re-applied via prevFocusedKey lookup.
     expect(channelItems()[1].classList.contains('focused')).toBe(true);
+  });
+});
+
+// Long-press OK: the color-key alternative for remotes where those codes
+// never reach the app. Uses real keydown/keyup dispatch (not
+// list.handleAction) since the gesture lives entirely in a raw listener on
+// the container, ahead of the Action pipeline.
+describe('ChannelList long-press options menu', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function keydownEnter(el: HTMLElement, repeat = false): void {
+    el.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 13, bubbles: true, repeat } as EventInit));
+  }
+  function keyupEnter(el: HTMLElement): void {
+    el.dispatchEvent(new KeyboardEvent('keyup', { keyCode: 13, bubbles: true }));
+  }
+
+  it('a quick tap still plays the focused channel, unaffected', () => {
+    list.render();
+    const alpha = channelItems()[0];
+    hover(alpha);
+    keydownEnter(alpha);
+    vi.advanceTimersByTime(100); // well under the threshold
+    keyupEnter(alpha);
+    expect(onSelect).toHaveBeenCalledWith(0, undefined, { group: 'builtin:all', playlist: undefined });
+  });
+
+  it('a quick tap still switches the focused group, unaffected', () => {
+    list.render();
+    const sports = container.querySelector<HTMLElement>('[data-group="source:Sports"]')!;
+    hover(sports);
+    keydownEnter(sports);
+    keyupEnter(sports);
+    expect(container.querySelector<HTMLElement>('.group-item.active')?.dataset.group)
+      .toBe('source:Sports');
+  });
+
+  it('holding past the threshold opens the options menu instead of the normal action', () => {
+    list.render();
+    const alpha = channelItems()[0];
+    hover(alpha);
+    keydownEnter(alpha);
+    vi.advanceTimersByTime(500);
+    expect(container.querySelector('[data-options-choice]')).not.toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    // Releasing after the menu already opened must not also fire select.
+    keyupEnter(alpha);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('ignores native key-repeat instead of restarting the hold timer', () => {
+    list.render();
+    const alpha = channelItems()[0];
+    hover(alpha);
+    keydownEnter(alpha);
+    vi.advanceTimersByTime(400);
+    keydownEnter(alpha, true); // OS auto-repeat while still held
+    vi.advanceTimersByTime(100); // total 500ms since the first keydown
+    expect(container.querySelector('[data-options-choice]')).not.toBeNull();
+  });
+
+  it('does not arm inside a text input (rename stays keydown-immediate)', () => {
+    list.enterEditMode();
+    const alpha = channelItems()[0];
+    hover(alpha);
+    list.handleAction('select'); // grab
+    list.handleAction('blue'); // start rename
+    const input = container.querySelector<HTMLInputElement>('.edit-text-input')!;
+    input.value = 'Alpha HD';
+    input.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 13, bubbles: true }));
+    // No matching keyup ever follows for this path — if it were long-press-armed
+    // it would hang open; commitTextInput fires straight from the keydown.
+    expect(container.querySelector('.edit-text-input')).toBeNull();
+    expect(channelItems()[0].querySelector('.channel-name')?.textContent).toBe('Alpha HD');
   });
 });

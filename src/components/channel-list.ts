@@ -5,6 +5,7 @@ import type {
   Channel,
   ChannelGroupId,
   ChannelHealthStatus,
+  ChannelScope,
   NumberEvent,
 } from '../types';
 import { SpatialNav } from '../navigation/spatial-nav';
@@ -25,6 +26,7 @@ import { ChannelCustomizationService } from '../services/channel-customization';
 import { SidebarList, applyFavoriteOrder, type SidebarEntry } from './sidebar-list';
 import { VirtualList } from '../utils/virtual-list';
 import { VirtualScrollGuard } from '../utils/virtual-scroll';
+import { CONFIG } from '../config';
 
 // Row strides mirror the fixed row geometry in css/channel-list.css:
 // .channel-item is 88px, .group-item is 60px plus its 8px vertical margin.
@@ -35,7 +37,7 @@ const CHANNEL_VIEWPORT_FALLBACK = 900;
 
 export class ChannelList {
   private container: HTMLElement;
-  private onChannelSelect: (index: number, catchup?: CatchupInfo) => void;
+  private onChannelSelect: (index: number, catchup?: CatchupInfo, scope?: ChannelScope) => void;
   private onChannelsChanged: () => void;
   private nav: SpatialNav;
   private editor: ChannelListEditor;
@@ -63,10 +65,31 @@ export class ChannelList {
   private groupEntriesPlaylist = '';
   private groupEntriesRevision = -1;
   private groupEntriesLocale: SupportedLocale | null = null;
+  // Long-press OK: some Magic Remotes have no physical color buttons at all,
+  // and some models intercept the color codes before they ever reach the
+  // app — this is the alternate way to reach the same actions. Handled with
+  // a raw keydown/keyup pair (not the Action pipeline, which fires 'select'
+  // immediately on keydown with no notion of "held") so a resolved tap still
+  // replays the exact same select a color-key-capable remote gets today.
+  //
+  // The Magic Remote's OK button never sends this keydown/keyup at all — per
+  // the platform gotcha in AGENTS.md, pressing OK over an element fires a
+  // trusted pointerdown/mousedown/pointerup/mouseup/click sequence instead,
+  // exactly like a desktop mouse. So the same gesture is independently
+  // re-implemented below on mousedown/click, sharing this timer: whichever
+  // input actually arrives (keyboard or pointer) drives it, never both at
+  // once for the same physical press.
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  // Set when the mousedown timer above already resolved into opening the
+  // menu, so the click that follows on release must be swallowed instead of
+  // also firing a select (see the click listener below).
+  private longPressResolvedByPointer = false;
+  private longPressStartX = 0;
+  private longPressStartY = 0;
 
   constructor(
     container: HTMLElement,
-    onChannelSelect: (index: number, catchup?: CatchupInfo) => void,
+    onChannelSelect: (index: number, catchup?: CatchupInfo, scope?: ChannelScope) => void,
     onChannelsChanged: () => void = () => {},
     onEpgMappingChanged: () => void = () => {},
     onEpgOffsetChanged: () => void = () => {},
@@ -95,6 +118,10 @@ export class ChannelList {
     this.container.addEventListener('mouseleave', () => {
       this.nav.clearHighlight();
       this.editor.finishPointerDrag();
+      if (this.longPressTimer !== null) {
+        clearTimeout(this.longPressTimer);
+        this.longPressTimer = null;
+      }
     });
 
     // Activate the item under the pointer by coordinate hit-test, so a click plays
@@ -105,8 +132,44 @@ export class ChannelList {
     this.container.setAttribute('data-self-activate', '');
     this.container.addEventListener('click', (e: MouseEvent) => {
       if (e.target instanceof HTMLInputElement) return;
+      // The mousedown/mousemove pair below already resolved this press into
+      // opening the options menu — this trailing click is the release of
+      // that same physical press and must not also fire a select.
+      if (this.longPressResolvedByPointer) {
+        this.longPressResolvedByPointer = false;
+        return;
+      }
+      if (this.longPressTimer !== null) {
+        clearTimeout(this.longPressTimer);
+        this.longPressTimer = null;
+      }
       if (this.editor.consumePointerClick()) return;
       this.onPointerRelease(e.clientX, e.clientY);
+    });
+    // Long-press OK via the Magic Remote pointer — see the longPressTimer
+    // field comment for why this duplicates the keydown/keyup version below.
+    this.container.addEventListener('mousedown', (e: MouseEvent) => {
+      if (e.target instanceof HTMLInputElement) return;
+      if (this.editor.isManagingFavorites) return;
+      const el = this.focusableAt(e.clientX, e.clientY);
+      const target = el ? this.editor.targetForElement(el) : null;
+      if (!target) return;
+      this.longPressStartX = e.clientX;
+      this.longPressStartY = e.clientY;
+      this.longPressTimer = setTimeout(() => {
+        this.longPressTimer = null;
+        this.longPressResolvedByPointer = true;
+        this.editor.openOptionsMenu(target);
+      }, CONFIG.CHANNEL_EDIT.LONG_PRESS_MS);
+    });
+    // A real drag (e.g. reordering while editing) isn't a hold-in-place —
+    // cancel the timer so it doesn't pop the menu open mid-drag.
+    this.container.addEventListener('mousemove', (e: MouseEvent) => {
+      if (this.longPressTimer === null) return;
+      if (Math.abs(e.clientX - this.longPressStartX) < 10
+          && Math.abs(e.clientY - this.longPressStartY) < 10) return;
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
     });
     this.container.addEventListener('error', (e: Event) => {
       const target = e.target;
@@ -118,6 +181,32 @@ export class ChannelList {
         this.render();
       }
     }, true);
+    // Long-press OK opens the options menu instead of firing the normal tap
+    // select — see the field comment. Text inputs (rename, new group/folder)
+    // and favorite-management (its own select meaning: toggle selection)
+    // are left alone entirely.
+    this.container.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.keyCode !== CONFIG.KEYS.ENTER || e.repeat) return;
+      if (e.target instanceof HTMLInputElement) return;
+      if (this.editor.isManagingFavorites) return;
+      const target = this.editor.targetForElement(this.nav.focused);
+      if (!target) return;
+      e.stopPropagation();
+      e.preventDefault();
+      this.longPressTimer = setTimeout(() => {
+        this.longPressTimer = null;
+        this.editor.openOptionsMenu(target);
+      }, CONFIG.CHANNEL_EDIT.LONG_PRESS_MS);
+    });
+    this.container.addEventListener('keyup', (e: KeyboardEvent) => {
+      if (e.keyCode !== CONFIG.KEYS.ENTER || this.longPressTimer === null) return;
+      // Released before the threshold: a normal tap, resolved only now
+      // since the keydown that would have fired it was suppressed above.
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+      this.handleAction('select');
+    });
+
     this.container.addEventListener('scroll', (e: Event) => {
       const target = e.target as HTMLElement;
       if (target.classList.contains('group-list')) {
@@ -154,6 +243,13 @@ export class ChannelList {
   private focusableAt(x: number, y: number): HTMLElement | null {
     const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-focusable]');
     return el && this.container.contains(el) ? el : null;
+  }
+
+  // The view a channel launched from here — including Recently Watched,
+  // which PlaylistService.getByGroup already treats as the full list, same
+  // as no scope at all.
+  private currentScope(): ChannelScope {
+    return { group: this.currentGroup, playlist: this.currentPlaylist || undefined };
   }
 
   render(ensureFocus = true): void {
@@ -231,10 +327,10 @@ export class ChannelList {
     morph(this.container, html`
       <div class="channel-view ${editing && !managingFavorites ? 'editing' : ''} ${
         managingFavorites ? 'favorite-managing' : ''} ${
-        !editing && this.currentGroup === 'builtin:favorites'
-          && (managingFavorites || filteredChannels.length)
-          ? 'has-channel-hints'
-          : ''}">
+        // Reserves room for the absolutely-positioned footer (the Favorites
+        // manage hint, favorite-selection hints, or the options-menu hold
+        // hint on a focused row) so it never covers the last channel.
+        !editing ? 'has-channel-hints' : ''}">
         <div class="sidebar" data-nav-container>
           <div class="sidebar-header">
             <div class="channel-count">${tp('channel.count', totalChannels)}</div>
@@ -400,14 +496,14 @@ export class ChannelList {
           const item = this.recentItems[parseInt(focused.dataset.recentIndex, 10)];
           if (item?.kind === 'live') {
             this.setPlaying(item.channelIndex);
-            this.onChannelSelect(item.channelIndex);
+            this.onChannelSelect(item.channelIndex, undefined, this.currentScope());
           } else if (item) {
             void this.playRecentCatchup(item);
           }
         } else if (focused.dataset.channelIndex !== undefined) {
           const idx = parseInt(focused.dataset.channelIndex, 10);
           this.setPlaying(idx);
-          this.onChannelSelect(idx);
+          this.onChannelSelect(idx, undefined, this.currentScope());
         }
         break;
       }
@@ -432,8 +528,8 @@ export class ChannelList {
         const num = event.number - 1;
         if (num >= 0 && num < PlaylistService.channels.length) {
           this.setPlaying(num);
-          this.revealChannel(num);
-          this.onChannelSelect(num);
+          this.revealChannel(num); // may widen currentGroup — read scope after
+          this.onChannelSelect(num, undefined, this.currentScope());
         }
         break;
       }
@@ -664,7 +760,7 @@ export class ChannelList {
       return;
     }
     this.setPlaying(item.channelIndex, item.progress.progStart);
-    this.onChannelSelect(item.channelIndex, catchup);
+    this.onChannelSelect(item.channelIndex, catchup, this.currentScope());
   }
 
   private moveVirtualFocus(delta: number): boolean {

@@ -105,6 +105,14 @@ export const CONFIG = {
     CHANNEL_MAX: 24,
   },
 
+  CHANNEL_EDIT: {
+    // How long OK must be held to open the options menu (the color-key
+    // alternative) instead of firing a normal select. Some Magic Remotes
+    // have no physical color buttons, and some models intercept the color
+    // codes before they ever reach the app.
+    LONG_PRESS_MS: 500,
+  },
+
   KEYS: {
     UP: 38,
     DOWN: 40,

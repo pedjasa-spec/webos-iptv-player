@@ -283,7 +283,7 @@ describe('ChannelList edit mode', () => {
         !item.querySelector('.channel-name')?.textContent?.startsWith('★'))).toBe(true);
       hover(channelItems()[0]);
       list.handleAction('select');
-      expect(onSelect).toHaveBeenCalledWith(0);
+      expect(onSelect).toHaveBeenCalledWith(0, undefined, { group: 'builtin:favorites', playlist: undefined });
     });
 
     it('uses a multi-select mode when editing favorites', () => {
@@ -504,11 +504,25 @@ describe('ChannelList edit mode', () => {
     expect(storageMock.setChannelCustomization).not.toHaveBeenCalled();
   });
 
-  it('green hides the selected channel, which stays visible but marked while editing', () => {
+  it('green favorites the selected channel while editing', () => {
     enterEdit();
     hover(channelItems()[1]);
     list.handleAction('select');
     list.handleAction('green');
+    expect(data.favorites).toContain(channelKey(data.raw[1]));
+    list.handleAction('green');
+    expect(data.favorites).not.toContain(channelKey(data.raw[1]));
+  });
+
+  it('the options menu hides the selected channel, which stays visible but marked while editing', () => {
+    enterEdit();
+    hover(channelItems()[1]);
+    list.handleAction('select');
+    const target = editorApi().targetForElement(channelItems()[1])!;
+    editorApi().openOptionsMenu(target);
+    list.render();
+    hover(optionRows().find(r => r.dataset.optionsChoice === 'hide')!);
+    list.handleAction('select');
     expect(channelItems()).toHaveLength(3);
     expect(channelItems()[1].classList.contains('hidden-entry')).toBe(true);
     expect(ChannelCustomizationService.isHidden(channelKey(data.raw[1]))).toBe(true);
@@ -517,11 +531,11 @@ describe('ChannelList edit mode', () => {
     expect(names()).toEqual(['Alpha', 'Charlie']);
   });
 
-  it('shows a toast instead of hiding the hovered channel when none is selected', () => {
+  it('shows a toast instead of favoriting the hovered channel when none is selected', () => {
     enterEdit();
     hover(channelItems()[1]);
     list.handleAction('green');
-    expect(ChannelCustomizationService.isHidden(channelKey(data.raw[1]))).toBe(false);
+    expect(data.favorites).toEqual([]);
     expect(toastMock.showToast).toHaveBeenLastCalledWith('Select a channel or group first.');
   });
 
@@ -1454,15 +1468,140 @@ describe('ChannelList edit mode', () => {
     expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
   });
 
-  it('green hides a source group', () => {
+  it('green favorites a source group while editing', () => {
     enterEdit();
     const news = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
       .find(el => el.dataset.group === 'source:News');
     hover(news!);
     list.handleAction('select');
     list.handleAction('green');
+    expect(ChannelCustomizationService.isGroupFavorite('News')).toBe(true);
+    list.handleAction('green');
+    expect(ChannelCustomizationService.isGroupFavorite('News')).toBe(false);
+  });
+
+  // --- Options menu: alternate input for remotes where color keys never
+  // reach the app at all (opened by channel-list.ts's long-press gesture;
+  // exercised here directly against the public API it calls).
+
+  it('the options menu hides a source group while editing', () => {
+    enterEdit();
+    const news = Array.from(container.querySelectorAll<HTMLElement>('.group-item'))
+      .find(el => el.dataset.group === 'source:News');
+    hover(news!);
+    list.handleAction('select');
+    const target = editorApi().targetForElement(news!)!;
+    editorApi().openOptionsMenu(target);
+    list.render();
+    hover(optionRows().find(r => r.dataset.optionsChoice === 'hide')!);
+    list.handleAction('select');
     expect(ChannelCustomizationService.isGroupHidden('News')).toBe(true);
     list.handleAction('yellow');
     expect(names()).toEqual(['Bravo']);
+  });
+
+  interface EditorInternals {
+    targetForElement(el: HTMLElement | null): { kind: string; key: string } | null;
+    openOptionsMenu(target: { kind: string; key: string }): void;
+  }
+  function editorApi(): EditorInternals {
+    return (list as unknown as { editor: EditorInternals }).editor;
+  }
+
+  function optionRows(): HTMLElement[] {
+    return Array.from(container.querySelectorAll<HTMLElement>('[data-options-choice]'));
+  }
+
+  it('offers only Add to Favorites for a focused channel outside edit mode', () => {
+    list.render();
+    const alpha = channelItems()[0];
+    const target = editorApi().targetForElement(alpha)!;
+    editorApi().openOptionsMenu(target);
+    list.render();
+
+    const rows = optionRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toBe('Add to Favorites');
+    expect(rows[0].dataset.optionsChoice).toBe('favorite');
+
+    hover(rows[0]);
+    list.handleAction('select');
+    expect(data.favorites).toContain(channelKey(data.raw[0]));
+    // Reopening now offers to remove it.
+    editorApi().openOptionsMenu(target);
+    list.render();
+    expect(optionRows()[0].textContent).toBe('Remove from Favorites');
+  });
+
+  it('offers only Favorite for a focused group outside edit mode', () => {
+    list.render();
+    const news = container.querySelector<HTMLElement>('[data-group="source:News"]')!;
+    const target = editorApi().targetForElement(news)!;
+    editorApi().openOptionsMenu(target);
+    list.render();
+
+    const rows = optionRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toBe('Favorite');
+
+    hover(rows[0]);
+    list.handleAction('select');
+    expect(ChannelCustomizationService.isGroupFavorite('News')).toBe(true);
+  });
+
+  it('offers Favorites/Hide/Rename/Group for a channel while editing, and dispatches to the same handlers', () => {
+    enterEdit();
+    const alpha = channelItems()[0];
+    const target = editorApi().targetForElement(alpha)!;
+    editorApi().openOptionsMenu(target);
+    list.render();
+
+    const rows = optionRows();
+    expect(rows.map(r => r.textContent)).toEqual(['Add to Favorites', 'Hide', 'Rename', 'Group']);
+
+    hover(rows[2]); // Rename
+    list.handleAction('select');
+    expect(container.querySelector('.edit-text-input')).not.toBeNull();
+    container.querySelector<HTMLInputElement>('.edit-text-input')!.value = 'Alpha HD';
+    list.handleAction('select');
+    expect(names()[0]).toBe('Alpha HD');
+  });
+
+  it('offers Favorite/Hide/Rename (no delete) for a real group while editing', () => {
+    enterEdit();
+    const news = container.querySelector<HTMLElement>('[data-group="source:News"]')!;
+    const target = editorApi().targetForElement(news)!;
+    editorApi().openOptionsMenu(target);
+    list.render();
+    expect(optionRows().map(r => r.textContent)).toEqual(['Favorite', 'Hide', 'Rename']);
+  });
+
+  it('offers Rename/Delete (no hide) for a folder while editing', () => {
+    ChannelCustomizationService.assignFolder(channelKey(data.raw[0]), 'Kids');
+    playlistMock.applyCustomization();
+    enterEdit();
+    const folder = container.querySelector<HTMLElement>('[data-group="folder:Kids"]')!;
+    const target = editorApi().targetForElement(folder)!;
+    editorApi().openOptionsMenu(target);
+    list.render();
+    const rows = optionRows();
+    expect(rows.map(r => r.textContent)).toEqual(['Rename', 'Delete']);
+
+    hover(rows[1]); // Delete
+    list.handleAction('select');
+    expect(document.querySelector('.confirmation-title')?.textContent).toBe('Delete "Kids"?');
+  });
+
+  it('back closes the options menu without side effects', () => {
+    list.render();
+    const alpha = channelItems()[0];
+    const target = editorApi().targetForElement(alpha)!;
+    editorApi().openOptionsMenu(target);
+    list.render();
+    expect(optionRows()).toHaveLength(1);
+
+    expect(list.handleBack()).toBe(true);
+    expect(optionRows()).toHaveLength(0);
+    expect(data.favorites).toEqual([]);
   });
 });

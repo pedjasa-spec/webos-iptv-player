@@ -22,7 +22,7 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('ChannelEditor');
 
-type EditTarget =
+export type EditTarget =
   | { kind: 'channel'; key: string }
   | { kind: 'group'; key: string }
   | { kind: 'folder'; key: string };
@@ -52,6 +52,12 @@ export class ChannelListEditor {
   private groupPickerFor: string | null = null;
   private newGroupOpen = false;
   private newFolderOpen = false;
+  // Alternate input for remotes/models where color-key codes never reach the
+  // app (some Magic Remotes have no physical color buttons at all, and the
+  // TV can intercept the code before it's delivered). Opened by a long-press
+  // on OK (see channel-list.ts) rather than a color key; the items it offers
+  // dispatch to the exact same handlers a color key would.
+  private optionsFor: EditTarget | null = null;
   private epgPickerFor: string | null = null;
   private epgOffsetFor: string | null = null;
   private epgQuery = '';
@@ -261,6 +267,7 @@ export class ChannelListEditor {
     this.groupPickerFor = null;
     this.newGroupOpen = false;
     this.newFolderOpen = false;
+    this.optionsFor = null;
     this.epgPickerFor = null;
     this.epgOffsetFor = null;
     this.epgQuery = '';
@@ -297,6 +304,11 @@ export class ChannelListEditor {
     if (this.newGroupOpen || this.newFolderOpen) {
       this.newGroupOpen = false;
       this.newFolderOpen = false;
+      this.options.render();
+      return true;
+    }
+    if (this.optionsFor) {
+      this.optionsFor = null;
       this.options.render();
       return true;
     }
@@ -343,6 +355,9 @@ export class ChannelListEditor {
       this.confirmationPrompt.handleAction(action);
       return true;
     }
+    // Checked before the editing gate: the options menu is reachable outside
+    // edit mode too (Favorite/Star), unlike every other overlay here.
+    if (this.optionsFor) return this.handleOptionsAction(action);
     if (this.favoriteSelection) return this.handleFavoriteAction(action);
     if (!this.editing) return false;
     return this.handleEditAction(action);
@@ -359,8 +374,33 @@ export class ChannelListEditor {
     if (focused?.dataset.channelIndex === undefined) return;
     const channel = PlaylistService.getByIndex(parseInt(focused.dataset.channelIndex, 10));
     if (!channel) return;
-    StorageService.toggleFavorite(channelKey(channel));
-    this.favoriteSelection?.delete(channelKey(channel));
+    this.toggleChannelFavorite(channelKey(channel));
+  }
+
+  private toggleChannelFavorite(key: string): void {
+    StorageService.toggleFavorite(key);
+    this.favoriteSelection?.delete(key);
+    this.options.render();
+  }
+
+  /** Resolve a focused element to the same target shape grab/rename/etc. use
+   *  internally — exposed so channel-list.ts's long-press gesture can name
+   *  what it's opening the options menu for, without duplicating this logic. */
+  targetForElement(el: HTMLElement | null): EditTarget | null {
+    return el ? this.editTargetForElement(el) : null;
+  }
+
+  /**
+   * Open the alternate-input options menu for `target`: the same actions a
+   * color key would reach for it, for a remote/model where color keys never
+   * arrive at all. Outside edit mode that's just Favorite (channel) or Star
+   * (group); while editing, it grabs `target` first (exactly as OK would)
+   * so Hide/Rename/Move-or-Delete dispatch through the existing, unchanged
+   * handlers.
+   */
+  openOptionsMenu(target: EditTarget): void {
+    if (this.editing) this.grabbed = target;
+    this.optionsFor = target;
     this.options.render();
   }
 
@@ -392,6 +432,9 @@ export class ChannelListEditor {
   }
 
   focusGroupPicker(): HTMLElement | null {
+    if (this.optionsFor) {
+      return this.container.querySelector<HTMLElement>('.group-picker [data-focusable]');
+    }
     if (this.epgOffsetFor) {
       return this.container.querySelector<HTMLElement>('[data-epg-offset-reset]');
     }
@@ -501,10 +544,29 @@ export class ChannelListEditor {
   renderFooter(showFavoriteManage: boolean): Safe | string {
     if (this.editing) return this.renderEditHints();
     if (this.favoriteSelection) return this.renderFavoriteHints();
-    return showFavoriteManage ? this.renderFavoriteManageHint() : '';
+    if (showFavoriteManage) return this.renderFavoriteManageHint();
+    return this.renderBrowseHint();
+  }
+
+  // Same alternate-input hint as the edit-mode footer, but for the two
+  // actions reachable outside edit mode (channel favorite, group favorite)
+  // — otherwise invisible on a remote where color keys never arrive.
+  private renderBrowseHint(): Safe | string {
+    // Deliberately not focusedTarget(): that falls back to the last valid
+    // edit target, which would leak the hint onto rows with no target of
+    // their own (e.g. the Recently Watched group tab).
+    const target = this.nav.focused ? this.editTargetForElement(this.nav.focused) : null;
+    if (!target || target.kind === 'folder') return '';
+    return html`
+      <div class="edit-hints browse-hints">
+        <span class="edit-hint edit-hint-hold"><span class="edit-key key-ok">OK</span><span>${
+          t('channel.editOptionsHint')}</span></span>
+      </div>
+    `;
   }
 
   renderGroupPicker(): Safe | string {
+    if (this.optionsFor) return this.renderOptionsMenu();
     if (this.epgOffsetFor) return this.renderEpgOffsetPicker();
     if (this.epgPickerFor) return this.renderEpgPicker();
     if (!this.groupPickerFor) return '';
@@ -577,6 +639,107 @@ export class ChannelListEditor {
     this.nav.setRestrict(null);
   }
 
+  private handleOptionsAction(action: Action): boolean {
+    switch (action) {
+      case 'up':
+      case 'down':
+        this.movePickerFocus(action);
+        return true;
+      case 'select':
+        this.chooseOptionsOption();
+        return true;
+      default:
+        return true; // swallow everything else while the menu is open
+    }
+  }
+
+  private chooseOptionsOption(): void {
+    const choice = this.nav.focused?.dataset.optionsChoice;
+    const target = this.optionsFor;
+    if (!choice || !target) return;
+    this.optionsFor = null;
+    if (choice === 'favorite' && target.kind === 'channel') {
+      this.toggleChannelFavorite(target.key);
+    } else if (choice === 'star' && target.kind === 'group') {
+      ChannelCustomizationService.toggleGroupFavorite(target.key);
+      this.options.render();
+    } else if (choice === 'hide') {
+      this.toggleHiddenSelected();
+    } else if (choice === 'rename') {
+      this.startRename();
+    } else if (choice === 'red') {
+      this.handleRedAction();
+    } else {
+      this.options.render();
+    }
+  }
+
+  /** Menu rows for `target`, in display order — same actions a color key
+   *  would reach, dynamically labeled where the color-key hint isn't. */
+  private optionsMenuItems(target: EditTarget): { choice: string; label: string }[] {
+    if (!this.editing) {
+      if (target.kind === 'channel') {
+        const isFavorite = StorageService.getFavorites().includes(target.key);
+        return [{
+          choice: 'favorite',
+          label: t(isFavorite ? 'channel.favoriteRemoveOne' : 'channel.favoriteAddOne'),
+        }];
+      }
+      if (target.kind === 'group') {
+        const favorited = ChannelCustomizationService.isGroupFavorite(target.key);
+        return [{
+          choice: 'star',
+          label: t(favorited ? 'channel.editUnfavoriteGroup' : 'channel.editFavoriteGroup'),
+        }];
+      }
+      return [];
+    }
+    const items: { choice: string; label: string }[] = [];
+    if (target.kind === 'channel') {
+      const isFavorite = StorageService.getFavorites().includes(target.key);
+      items.push({
+        choice: 'favorite',
+        label: t(isFavorite ? 'channel.favoriteRemoveOne' : 'channel.favoriteAddOne'),
+      });
+    } else if (target.kind === 'group') {
+      const favorited = ChannelCustomizationService.isGroupFavorite(target.key);
+      items.push({
+        choice: 'star',
+        label: t(favorited ? 'channel.editUnfavoriteGroup' : 'channel.editFavoriteGroup'),
+      });
+    }
+    if (target.kind !== 'folder') {
+      const hidden = target.kind === 'channel'
+        ? ChannelCustomizationService.isHidden(target.key)
+        : ChannelCustomizationService.isGroupHidden(target.key);
+      items.push({ choice: 'hide', label: t(hidden ? 'channel.editUnhide' : 'channel.editHide') });
+    }
+    items.push({ choice: 'rename', label: t('channel.editRename') });
+    if (target.kind === 'channel') {
+      items.push({ choice: 'red', label: t('channel.editGroup') });
+    } else if (target.kind === 'folder' || ChannelCustomizationService.customGroups.includes(target.key)) {
+      items.push({ choice: 'red', label: t('channel.editDeleteGroup') });
+    }
+    return items;
+  }
+
+  private renderOptionsMenu(): Safe | string {
+    const target = this.optionsFor;
+    if (!target) return '';
+    const items = this.optionsMenuItems(target);
+    return html`
+      <div class="group-picker" data-nav-container>
+        <div class="group-picker-title">${t('channel.editOptions')}</div>
+        <div class="group-picker-list">
+          ${items.map(item => html`
+            <div class="group-picker-option" data-key="op:${item.choice}" data-focusable
+                 data-options-choice="${item.choice}">${item.label}</div>
+          `)}
+        </div>
+      </div>
+    `;
+  }
+
   private handleEditAction(action: Action): boolean {
     // The inline field owns typing; select commits, back cancels via handleBack.
     if (this.renaming || this.newGroupOpen || this.newFolderOpen) {
@@ -642,7 +805,7 @@ export class ChannelListEditor {
         this.toggleGrab();
         return true;
       case 'green':
-        this.toggleHiddenSelected();
+        this.toggleFavoriteSelected();
         return true;
       case 'blue':
         this.startRename();
@@ -925,6 +1088,22 @@ export class ChannelListEditor {
       this.refocus = `ch:${PlaylistService.indexOfKey(target.key)}`;
     }
     this.options.render();
+  }
+
+  private toggleFavoriteSelected(): void {
+    const target = this.grabbed;
+    if (!target) {
+      showToast(t('channel.editSelectFirst'));
+      return;
+    }
+    // Same as hide: a folder is a visibility overlay, not a favoritable thing.
+    if (target.kind === 'folder') return;
+    if (target.kind === 'channel') {
+      this.toggleChannelFavorite(target.key);
+    } else {
+      ChannelCustomizationService.toggleGroupFavorite(target.key);
+      this.options.render();
+    }
   }
 
   private startRename(): void {
@@ -1433,7 +1612,7 @@ export class ChannelListEditor {
           grabbed ? t('channel.editDrop') : t('channel.editGrab')}</span></span>
         <button class="edit-hint edit-action" data-key="edit:green" data-focusable
                 data-edit-action="green"><span class="edit-key key-green"></span><span>${
-                  t('channel.editHide')}</span></button>
+                  t('channel.editFavoriteGroup')}</span></button>
         <button class="edit-hint edit-action" data-key="edit:blue" data-focusable
                 data-edit-action="blue"><span class="edit-key key-blue"></span><span>${
                   t('channel.editRename')}</span></button>
@@ -1457,6 +1636,8 @@ export class ChannelListEditor {
           <span class="edit-key key-back">${raw(BACK_ICON)}</span>
           <span>${t('channel.editDone')}</span>
         </button>
+        <span class="edit-hint edit-hint-hold"><span class="edit-key key-ok">OK</span><span>${
+          t('channel.editOptionsHint')}</span></span>
       </div>
     `;
   }

@@ -55,6 +55,18 @@ async function focusChannel(page: Page, index: number): Promise<void> {
   await expect(page.locator('.channel-main .channel-item').nth(index)).toHaveClass(/focused/);
 }
 
+/** Hold OK on `locator`, as the Magic Remote pointer would: a real mouse
+ *  press-and-hold past the long-press threshold, opening the alternate
+ *  options menu (Hide now lives there — green is the favorite toggle). */
+async function holdOk(page: Page, locator: ReturnType<Page['locator']>): Promise<void> {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error('holdOk: element has no bounding box');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(600);
+  await page.mouse.up();
+}
+
 test('yellow enters edit mode and shows the color-key hints; yellow again leaves', async ({ page }) => {
   await boot(page);
 
@@ -62,7 +74,8 @@ test('yellow enters edit mode and shows the color-key hints; yellow again leaves
   await expect(page.locator('.edit-hints')).toBeVisible();
 
   await key(page, YELLOW);
-  await expect(page.locator('.edit-hints')).toHaveCount(0);
+  // The browse-mode hold hint may legitimately still show for the focused row.
+  await expect(page.locator('.edit-hints:not(.browse-hints)')).toHaveCount(0);
 });
 
 test('the edit toolbar fits every locale with both EPG actions', async ({ page }) => {
@@ -98,7 +111,8 @@ test('back leaves edit mode instead of leaving the channel list', async ({ page 
   await expect(page.locator('.edit-hints')).toBeVisible();
 
   await key(page, BACK);
-  await expect(page.locator('.edit-hints')).toHaveCount(0);
+  // The browse-mode hold hint may legitimately still show for the focused row.
+  await expect(page.locator('.edit-hints:not(.browse-hints)')).toHaveCount(0);
   await expect(page.locator('#view-channels')).toBeVisible();
 });
 
@@ -127,10 +141,10 @@ test('grab and move reorders a channel, and the order survives a reload', async 
   await expect(page.locator('.channel-main .channel-item').first()).toContainText('1');
 });
 
-test('green hides a channel in edit mode and toggles a favorite outside it', async ({ page }) => {
+test('green favorites a channel in and outside edit mode; hide moved to the options menu', async ({ page }) => {
   await boot(page);
 
-  // Outside edit mode green is still the favorite toggle.
+  // Outside edit mode green is the favorite toggle.
   await focusChannel(page, 0);
   await key(page, GREEN);
   await expect(page.locator('.channel-main .channel-name').first()).toContainText('★');
@@ -139,6 +153,13 @@ test('green hides a channel in edit mode and toggles a favorite outside it', asy
   await focusChannel(page, 1);
   await key(page, ENTER);
   await key(page, GREEN);
+  // Green favorites in edit mode too — it no longer hides.
+  await expect(page.locator('.channel-main .channel-name').nth(1)).toContainText('★');
+
+  // Hide now lives behind a held OK (the options menu), not a color key.
+  await holdOk(page, page.locator('.channel-main .channel-item').nth(1));
+  await key(page, DOWN); // Hide is the second row, after Favorite
+  await key(page, ENTER);
   // Hidden channels stay listed while editing, marked, so they can be brought back.
   await expect(page.locator('.channel-main .channel-item')).toHaveCount(4);
   await expect(page.locator('.channel-main .channel-item').nth(1)).toHaveClass(/hidden-entry/);
@@ -157,15 +178,17 @@ test('leaving edit mode through the tab bar keeps hidden channels out of Search'
   await boot(page);
   await key(page, YELLOW);
   await focusChannel(page, 1);
+  await holdOk(page, page.locator('.channel-main .channel-item').nth(1));
+  await key(page, DOWN);
   await key(page, ENTER);
-  await key(page, GREEN);
   await expect(page.locator('.channel-main .channel-item').nth(1)).toHaveClass(/hidden-entry/);
 
   await enterTab(page, 'search');
   await page.locator('.tab-bar-search-input').fill('Beta News');
 
   await expect(page.locator('.search-channel-row')).toHaveCount(0);
-  await expect(page.locator('.edit-hints')).toHaveCount(0);
+  // The browse-mode hold hint may legitimately still show for the focused row.
+  await expect(page.locator('.edit-hints:not(.browse-hints)')).toHaveCount(0);
 });
 
 test('blue renames a channel, and an empty rename restores the source name', async ({ page }) => {
@@ -557,8 +580,9 @@ test('a group row can be reordered, renamed, and hidden', async ({ page }) => {
   await expect(page.locator('[data-group="source:Headlines"]')).toBeVisible();
 
   // Hide: every channel of the group drops out once edit mode ends.
-  await page.locator('[data-group="source:Headlines"]').hover();
-  await key(page, GREEN);
+  await holdOk(page, page.locator('[data-group="source:Headlines"]'));
+  await key(page, DOWN); // Hide is the second row, after Favorite
+  await key(page, ENTER);
   await key(page, YELLOW);
   await expect(page.locator('.channel-main .channel-item')).toHaveCount(2);
   expect(await names(page)).toEqual(['Alpha Movies', 'Delta Sports']);
@@ -570,8 +594,9 @@ test('Settings enters edit mode, reveals hidden channels, and resets everything'
   // Hide one channel, then leave edit mode.
   await key(page, YELLOW);
   await focusChannel(page, 1);
+  await holdOk(page, page.locator('.channel-main .channel-item').nth(1));
+  await key(page, DOWN);
   await key(page, ENTER);
-  await key(page, GREEN);
   await key(page, YELLOW);
   await expect(page.locator('.channel-main .channel-item')).toHaveCount(3);
 

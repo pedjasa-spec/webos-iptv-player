@@ -442,6 +442,12 @@
   white-space: nowrap;
 }
 
+/* The long-press alternate-input hint reads as supplementary, not another
+   primary action, so it's visually quieter than the rest of the row. */
+.edit-hint-hold {
+  opacity: 0.7;
+}
+
 .edit-action {
   padding: 6px 8px;
   background: transparent;
