@@ -48,6 +48,13 @@ export class ChannelListEditor {
   private favoriteSelection: Set<string> | null = null;
   private editing = false;
   private grabbed: EditTarget | null = null;
+  // True only right after an explicit "select" grab — up/down reorders in
+  // that state. A one-shot color-key action (favorite) on the grabbed
+  // target clears this without dropping `grabbed` itself, so pressing the
+  // same key again still toggles the same channel back — but the very next
+  // up/down moves focus to the next row instead of reordering the one just
+  // acted on.
+  private grabbedForReorder = false;
   private renaming: EditTarget | null = null;
   private groupPickerFor: string | null = null;
   private newGroupOpen = false;
@@ -798,7 +805,7 @@ export class ChannelListEditor {
         return true;
       case 'up':
       case 'down':
-        if (!this.grabbed) return false;
+        if (!this.grabbed || !this.grabbedForReorder) return false;
         this.moveGrabbed(action === 'up' ? -1 : 1);
         return true;
       case 'select':
@@ -953,6 +960,7 @@ export class ChannelListEditor {
     const same = this.grabbed && this.grabbed.kind === target.kind
       && this.grabbed.key === target.key;
     this.grabbed = same ? null : target;
+    this.grabbedForReorder = !same;
     this.options.render();
   }
 
@@ -1098,6 +1106,11 @@ export class ChannelListEditor {
     }
     // Same as hide: a folder is a visibility overlay, not a favoritable thing.
     if (target.kind === 'folder') return;
+    // Keep `grabbed` itself so pressing green again still toggles the same
+    // channel back without re-selecting — but this wasn't a reorder grab,
+    // so the very next up/down must move focus to the next row instead of
+    // reordering the one just favorited.
+    this.grabbedForReorder = false;
     if (target.kind === 'channel') {
       this.toggleChannelFavorite(target.key);
     } else {

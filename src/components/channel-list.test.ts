@@ -952,4 +952,46 @@ describe('ChannelList long-press options menu', () => {
     expect(container.querySelector('.edit-text-input')).toBeNull();
     expect(channelItems()[0].querySelector('.channel-name')?.textContent).toBe('Alpha HD');
   });
+
+  it('green in edit mode stops reordering, so the next down just moves focus', () => {
+    const original = data.raw.slice();
+    data.raw.splice(0, data.raw.length);
+    for (let i = 0; i < 200; i++) {
+      data.raw.push({
+        ...original[0],
+        id: `ch${String(i)}`,
+        name: `Channel ${String(i)}`,
+        url: `http://host/${String(i)}`,
+        group: 'News',
+      });
+    }
+    try {
+      playlistMock.applyCustomization();
+      list.render();
+      hover(channelItems()[0]);
+      for (let i = 0; i < 100; i++) list.handleAction('down');
+      list.enterEditMode();
+      const target = channelItems().find(el => el.classList.contains('focused'))!;
+      const targetKey = target.getAttribute('data-key');
+      list.handleAction('select'); // grab
+      expect(target.classList.contains('grabbed')).toBe(true);
+
+      list.handleAction('green'); // favorite it
+      // Still "grabbed" (pressing green again would toggle the same channel
+      // back off without re-selecting) — but no longer reorder-armed.
+      expect(container.querySelector(`[data-key="${targetKey}"]`)?.classList.contains('grabbed'))
+        .toBe(true);
+
+      storageMock.setChannelCustomization.mockClear();
+      list.handleAction('down'); // must move focus, not reorder the just-favorited channel
+      expect(storageMock.setChannelCustomization).not.toHaveBeenCalled();
+
+      const focused = container.querySelector('.channel-item.focused');
+      expect(focused?.getAttribute('data-key')).not.toBe(targetKey);
+      expect(focused?.querySelector('.channel-name')?.textContent).toBe('Channel 101');
+    } finally {
+      data.raw.splice(0, data.raw.length, ...original);
+      playlistMock.applyCustomization();
+    }
+  });
 });
