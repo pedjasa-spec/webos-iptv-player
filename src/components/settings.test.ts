@@ -109,6 +109,7 @@ const {
     // mockResolvedValueOnce. Never touches the network.
     xtreamMock: {
       getAccountInfo: vi.fn(async (): Promise<XtreamAccountInfo | null> => null),
+      getLiveCategories: vi.fn(async () => [] as { id: string; name: string; parentId: string }[]),
     },
     healthMock: {
       getSummary: vi.fn((channels: unknown[]) => ({
@@ -135,7 +136,10 @@ vi.mock('../services/theme-service', () => themeMock);
 vi.mock('../services/idb-cache', () => cacheMock);
 vi.mock('./toast', () => ({ showToast: toastMock.showToast }));
 vi.mock('../services/xtream-client', () => ({
-  createXtreamClient: () => ({ getAccountInfo: xtreamMock.getAccountInfo }),
+  createXtreamClient: () => ({
+    getAccountInfo: xtreamMock.getAccountInfo,
+    getLiveCategories: xtreamMock.getLiveCategories,
+  }),
 }));
 vi.mock('../services/upload-client', () => ({
   UploadClient: uploadMock,
@@ -1737,5 +1741,98 @@ describe('Settings Xtream section', () => {
     const status = container.querySelector('#xtream-entries .xtream-status')!;
     expect(status.classList.contains('err')).toBe(true);
     expect(status.textContent).toContain('verify');
+  });
+
+  it('Check discovers live categories and defaults every one to disabled', async () => {
+    state.playlists = [
+      { id: 'x1', name: 'Acct', url: 'http://host:8080', source: 'xtream', xtream: { username: 'u', password: 'p' } },
+    ];
+    settings.render();
+    xtreamMock.getAccountInfo.mockResolvedValueOnce({
+      auth: true, status: 'Active', expiresAt: null, maxConnections: 1, activeConnections: 0,
+      allowedOutputFormats: [],
+    });
+    xtreamMock.getLiveCategories.mockResolvedValueOnce([
+      { id: '1', name: 'News', parentId: '' },
+      { id: '2', name: 'Sports', parentId: '' },
+    ]);
+    click('#xtream-entries .check-xtream');
+    await flush();
+    const toggles = container.querySelectorAll('#xtream-entries .xtream-category-toggle');
+    expect(toggles).toHaveLength(2);
+    expect(Array.from(toggles).every(el => !el.classList.contains('active'))).toBe(true);
+    expect(container.querySelector('.xtream-categories-header span')!.textContent)
+      .toContain('0');
+  });
+
+  it('toggling a discovered category enables it and updates the count', async () => {
+    state.playlists = [
+      { id: 'x1', name: 'Acct', url: 'http://host:8080', source: 'xtream', xtream: { username: 'u', password: 'p' } },
+    ];
+    settings.render();
+    xtreamMock.getAccountInfo.mockResolvedValueOnce({
+      auth: true, status: 'Active', expiresAt: null, maxConnections: 1, activeConnections: 0,
+      allowedOutputFormats: [],
+    });
+    xtreamMock.getLiveCategories.mockResolvedValueOnce([{ id: '1', name: 'News', parentId: '' }]);
+    click('#xtream-entries .check-xtream');
+    await flush();
+
+    click('[data-category-id="1"]');
+
+    const toggle = container.querySelector('[data-category-id="1"]')!;
+    expect(toggle.classList.contains('active')).toBe(true);
+    expect(container.querySelector('.xtream-categories-header span')!.textContent).toContain('1');
+  });
+
+  it('Save persists only the enabled categories as the live-category filter', async () => {
+    state.playlists = [
+      { id: 'x1', name: 'Acct', url: 'http://host:8080', source: 'xtream', xtream: { username: 'u', password: 'p' } },
+    ];
+    settings.render();
+    xtreamMock.getAccountInfo.mockResolvedValueOnce({
+      auth: true, status: 'Active', expiresAt: null, maxConnections: 1, activeConnections: 0,
+      allowedOutputFormats: [],
+    });
+    xtreamMock.getLiveCategories.mockResolvedValueOnce([
+      { id: '1', name: 'News', parentId: '' },
+      { id: '2', name: 'Sports', parentId: '' },
+    ]);
+    click('#xtream-entries .check-xtream');
+    await flush();
+    click('[data-category-id="1"]');
+
+    click('#save-settings');
+
+    const saved = storageMock.setPlaylists.mock.calls.at(-1)![0] as PlaylistEntry[];
+    expect(saved[0].xtream?.liveCategories).toEqual([
+      { id: '1', name: 'News', enabled: true },
+      { id: '2', name: 'Sports', enabled: false },
+    ]);
+  });
+
+  it('refreshing categories keeps existing choices and adds a new one as disabled', async () => {
+    state.playlists = [
+      {
+        id: 'x1', name: 'Acct', url: 'http://host:8080', source: 'xtream',
+        xtream: {
+          username: 'u', password: 'p',
+          liveCategories: [{ id: '1', name: 'News', enabled: true }],
+        },
+      },
+    ];
+    settings.render();
+    // The stored choice renders immediately, with no Check needed.
+    expect(container.querySelector('[data-category-id="1"]')!.classList.contains('active')).toBe(true);
+
+    xtreamMock.getLiveCategories.mockResolvedValueOnce([
+      { id: '1', name: 'News', parentId: '' },
+      { id: '2', name: 'Sports', parentId: '' },
+    ]);
+    click('.refresh-live-categories');
+    await flush();
+
+    expect(container.querySelector('[data-category-id="1"]')!.classList.contains('active')).toBe(true);
+    expect(container.querySelector('[data-category-id="2"]')!.classList.contains('active')).toBe(false);
   });
 });

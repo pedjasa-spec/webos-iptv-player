@@ -224,6 +224,7 @@ class PlaylistServiceImpl {
       let fetchUrl = pl.url;
       let xtreamCredentials: XtreamCredentials | null = null;
       let xtreamOutput: XtreamLiveOutput = 'ts';
+      let categoryFilter: Set<string> | null = null;
       if (pl.source === 'xtream' && pl.xtream) {
         const credentials = { baseUrl: pl.url, ...pl.xtream };
         xtreamCredentials = credentials;
@@ -237,55 +238,84 @@ class PlaylistServiceImpl {
           credentials,
           xtreamOutput,
         );
+        if (pl.xtream.liveCategories?.length) {
+          categoryFilter = new Set(
+            pl.xtream.liveCategories.filter(category => category.enabled).map(category => category.id),
+          );
+        }
       }
       const plDone = log.time(`fetch '${pl.name || pl.url}'`);
       try {
         let parsed: ParsedPlaylist | null = null;
         let playlistError: unknown;
-        try {
-          const text = await fetchPlaylistText(fetchUrl, 60000);
-          log.info('Fetched', pl.name || pl.url, '|', text.length, 'bytes');
-          parsed = parseM3U(text, fetchUrl);
-        } catch (err) {
-          playlistError = err;
-          if (!xtreamCredentials) throw err;
-          log.warn(
-            'Xtream playlist failed; trying the Player API live catalog',
-            'event=xtream.live_fallback.used',
-            'reason=request_failed',
-          );
-        }
-
         let fallbackStreams: XtreamLiveStream[] | undefined;
-        if (xtreamCredentials && (!parsed || !parsed.channels.length)) {
-          if (parsed) {
-            log.warn(
-              'Xtream playlist contained no channels; trying the Player API live catalog',
-              'event=xtream.live_fallback.used',
-              'reason=no_channels',
-            );
-          }
+
+        if (xtreamCredentials && categoryFilter) {
+          // A category allow-list is configured: the M3U endpoint always
+          // returns every category, so go straight to the Player API and
+          // only materialize the chosen categories' streams. This is what
+          // keeps a large account's memory/EPG footprint bounded to what
+          // the user actually picked.
           const client = createXtreamClient(xtreamCredentials);
           const [categories, streams] = await Promise.all([
             client.getLiveCategories(),
             client.getLiveStreams(),
           ]);
-          fallbackStreams = streams;
+          const filteredStreams = streams.filter(stream => categoryFilter!.has(stream.categoryId));
+          fallbackStreams = filteredStreams;
           log.info(
-            'Xtream Player API live catalog completed',
-            'event=xtream.live_api.completed',
-            `categories=${categories.length}`,
-            `streams=${streams.length}`,
+            'Xtream category filter applied',
+            'event=xtream.category_filter.applied',
+            `categories=${categoryFilter.size}`,
+            `streams=${filteredStreams.length}`,
+            `of=${streams.length}`,
           );
-          if (streams.length) {
-            parsed = xtreamLivePlaylist(
-              xtreamCredentials,
-              xtreamOutput,
-              categories,
-              streams,
+          parsed = xtreamLivePlaylist(xtreamCredentials, xtreamOutput, categories, filteredStreams);
+        } else {
+          try {
+            const text = await fetchPlaylistText(fetchUrl, 60000);
+            log.info('Fetched', pl.name || pl.url, '|', text.length, 'bytes');
+            parsed = parseM3U(text, fetchUrl);
+          } catch (err) {
+            playlistError = err;
+            if (!xtreamCredentials) throw err;
+            log.warn(
+              'Xtream playlist failed; trying the Player API live catalog',
+              'event=xtream.live_fallback.used',
+              'reason=request_failed',
             );
-          } else if (!parsed && playlistError) {
-            throw playlistError;
+          }
+
+          if (xtreamCredentials && (!parsed || !parsed.channels.length)) {
+            if (parsed) {
+              log.warn(
+                'Xtream playlist contained no channels; trying the Player API live catalog',
+                'event=xtream.live_fallback.used',
+                'reason=no_channels',
+              );
+            }
+            const client = createXtreamClient(xtreamCredentials);
+            const [categories, streams] = await Promise.all([
+              client.getLiveCategories(),
+              client.getLiveStreams(),
+            ]);
+            fallbackStreams = streams;
+            log.info(
+              'Xtream Player API live catalog completed',
+              'event=xtream.live_api.completed',
+              `categories=${categories.length}`,
+              `streams=${streams.length}`,
+            );
+            if (streams.length) {
+              parsed = xtreamLivePlaylist(
+                xtreamCredentials,
+                xtreamOutput,
+                categories,
+                streams,
+              );
+            } else if (!parsed && playlistError) {
+              throw playlistError;
+            }
           }
         }
         if (!parsed) throw new Error('Xtream source returned no playlist or live catalog');

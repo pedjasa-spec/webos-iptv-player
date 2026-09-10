@@ -823,6 +823,57 @@
 .xtream-status.ok { color: var(--accent); }
 .xtream-status.err { color: var(--danger); }
 
+.xtream-categories-status {
+  margin-top: 12px;
+  font-size: 18px;
+  color: var(--text-muted);
+}
+
+.xtream-categories-status.err { color: var(--danger); }
+
+.xtream-categories {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.xtream-categories-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 18px;
+  color: var(--text-muted);
+}
+
+.xtream-categories-header .refresh-live-categories {
+  padding: 6px 16px;
+  font-size: 16px;
+}
+
+.xtream-category-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.xtream-category-toggle {
+  padding: 8px 16px;
+  font-size: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.xtream-category-toggle.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-primary);
+}
+
 /* Theme picker: focusable swatch tiles. Each tile carries its own data-theme, so
    its mini app-mock (tab bar, focused channel tile, list rows, status dots) and
    its own surfaces/text render in that theme's colors. */

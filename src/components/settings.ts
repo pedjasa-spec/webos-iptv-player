@@ -1,4 +1,11 @@
-import type { Action, EpgSource, NavDirection, PlaylistEntry, TzMode } from '../types';
+import type {
+  Action,
+  EpgSource,
+  NavDirection,
+  PlaylistEntry,
+  TzMode,
+  XtreamLiveCategoryChoice,
+} from '../types';
 import { $, $$, html, raw, type Safe } from '../utils/dom';
 import { morph } from '../utils/morph';
 import { SpatialNav } from '../navigation/spatial-nav';
@@ -18,7 +25,7 @@ import {
   ChannelHealthService,
   type ChannelHealthProgress,
 } from '../services/channel-health';
-import { createXtreamClient } from '../services/xtream-client';
+import { createXtreamClient, type XtreamLiveCategory } from '../services/xtream-client';
 import { normalizeXtreamBaseUrl, normalizeXtreamLiveOutputPreference } from '../utils/xtream-url';
 import { genPlaylistId, isSourceEnabled } from '../utils/playlist';
 import { channelKey, legacyChannelKey } from '../utils/channel';
@@ -294,7 +301,59 @@ function withEnabledState(entry: PlaylistEntry, enabled: boolean): PlaylistEntry
 
 /** One editable Xtream account: its fields grouped in a card
  *  keyed by the entry's stable id. Untrusted values interpolate through `html`. */
-function xtreamCard(pl: Partial<PlaylistEntry>) {
+/** Merge freshly discovered categories with any previous choice: a category
+ *  seen before keeps its enabled state; one never seen before (including
+ *  every category on the very first discovery) defaults to disabled — the
+ *  user opts a category in, rather than opting unwanted ones out. */
+function mergeLiveCategories(
+  discovered: XtreamLiveCategory[],
+  previous: XtreamLiveCategoryChoice[],
+): XtreamLiveCategoryChoice[] {
+  const prevById = new Map(previous.map(choice => [choice.id, choice]));
+  return discovered.map(category => ({
+    id: category.id,
+    name: category.name || category.id,
+    enabled: prevById.get(category.id)?.enabled ?? false,
+  }));
+}
+
+type LiveCategoryState = 'idle' | 'loading' | 'error';
+
+function xtreamCategoriesBlock(
+  accountId: string,
+  choices: XtreamLiveCategoryChoice[],
+  state: LiveCategoryState,
+): Safe {
+  if (state === 'loading') {
+    return html`<div class="xtream-categories-status">${t('settings.categoriesLoading')}</div>`;
+  }
+  if (state === 'error') {
+    return html`<div class="xtream-categories-status err">${t('settings.categoriesLoadFailed')}</div>`;
+  }
+  if (!choices.length) return html``;
+  const enabledCount = choices.filter(choice => choice.enabled).length;
+  return html`
+    <div class="xtream-categories">
+      <div class="xtream-categories-header">
+        <span>${t('settings.liveCategoriesCount', { enabled: enabledCount, total: choices.length })}</span>
+        <button class="btn btn-secondary refresh-live-categories" data-focusable
+                data-account-id="${accountId}">${t('settings.refreshCategories')}</button>
+      </div>
+      <div class="xtream-category-list">
+        ${choices.map(choice => html`
+          <button class="xtream-category-toggle ${choice.enabled ? 'active' : ''}" data-focusable
+                  data-account-id="${accountId}" data-category-id="${choice.id}"
+                  aria-pressed="${choice.enabled ? 'true' : 'false'}">${choice.name}</button>
+        `)}
+      </div>
+    </div>`;
+}
+
+function xtreamCard(
+  pl: Partial<PlaylistEntry>,
+  liveCategories: XtreamLiveCategoryChoice[] = [],
+  liveCategoryState: LiveCategoryState = 'idle',
+) {
   const liveOutput = normalizeXtreamLiveOutputPreference(pl.xtream?.liveOutput);
   const enabled = pl.enabled !== false;
   return html`
@@ -336,6 +395,7 @@ function xtreamCard(pl: Partial<PlaylistEntry>) {
         <button class="btn btn-danger remove-xtream" data-focusable>${t('common.remove')}</button>
         <div class="xtream-status"></div>
       </div>
+      <div class="xtream-categories-slot">${xtreamCategoriesBlock(pl.id || '', liveCategories, liveCategoryState)}</div>
     </div>`;
 }
 
@@ -374,6 +434,10 @@ export class Settings {
   private healthProgress: ChannelHealthProgress | null = null;
   private healthPaused = false;
   private healthResume: (() => void) | null = null;
+  // Pending (not-yet-saved) Xtream live-category choices, keyed by account id.
+  // Seeded from storage on render(); save() writes back whatever is here.
+  private liveCategoryChoices = new Map<string, XtreamLiveCategoryChoice[]>();
+  private liveCategoryState = new Map<string, LiveCategoryState>();
 
   constructor(
     container: HTMLElement,
@@ -522,7 +586,11 @@ export class Settings {
                 <h3 class="settings-section-title">${t('settings.xtreamAccount')}</h3>
                 <div class="xtream-entries" id="xtream-entries">
                   ${accounts.length
-                    ? html`${accounts.map((pl) => xtreamCard(pl))}`
+                    ? html`${accounts.map((pl) => xtreamCard(
+                        pl,
+                        this.liveCategoryChoices.get(pl.id) ?? pl.xtream?.liveCategories ?? [],
+                        this.liveCategoryState.get(pl.id) ?? 'idle',
+                      ))}`
                     : html`<div class="empty-hint">${t('settings.noXtream')}</div>`}
                 </div>
                 <button class="btn btn-primary" data-focusable id="add-xtream">${t('settings.addXtream')}</button>
@@ -980,6 +1048,10 @@ export class Settings {
       this.removeXtreamEntry(el);
     } else if (el.classList.contains('check-xtream')) {
       void this.checkXtreamAccount(el);
+    } else if (el.classList.contains('refresh-live-categories')) {
+      this.refreshLiveCategories(el);
+    } else if (el.classList.contains('xtream-category-toggle')) {
+      this.toggleLiveCategory(el);
     } else if (el.classList.contains('source-toggle')) {
       this.toggleSource(el);
     } else if (el.classList.contains('remove-upload')) {
@@ -1667,6 +1739,78 @@ export class Settings {
       })}`,
       'ok',
     );
+    // Verified credentials are also what's needed to discover live categories \u2014
+    // do it now so a brand-new account gets the picker before anything else
+    // is ever fetched, per the one-time discovery flow.
+    void this.loadLiveCategories(id, url, username, password);
+  }
+
+  private async loadLiveCategories(
+    id: string,
+    url: string,
+    username: string,
+    password: string,
+  ): Promise<void> {
+    this.liveCategoryState.set(id, 'loading');
+    this.renderLiveCategoriesSlot(id);
+    let discovered: XtreamLiveCategory[];
+    try {
+      discovered = await createXtreamClient({ baseUrl: url, username, password }).getLiveCategories();
+    } catch (err) {
+      log.warn(
+        'Xtream category discovery failed',
+        'event=xtream.categories.discover.failed',
+        err,
+      );
+      this.liveCategoryState.set(id, 'error');
+      this.renderLiveCategoriesSlot(id);
+      return;
+    }
+    const previous = this.liveCategoryChoices.get(id)
+      ?? StorageService.getPlaylists().find(pl => pl.id === id)?.xtream?.liveCategories
+      ?? [];
+    this.liveCategoryChoices.set(id, mergeLiveCategories(discovered, previous));
+    this.liveCategoryState.set(id, 'idle');
+    this.renderLiveCategoriesSlot(id);
+  }
+
+  private refreshLiveCategories(btn: HTMLElement): void {
+    const card = btn.closest<HTMLElement>('.xtream-card');
+    if (!card) return;
+    const id = card.dataset.id || '';
+    const url = card.querySelector<HTMLInputElement>('.xtream-url')!.value.trim();
+    const username = card.querySelector<HTMLInputElement>('.xtream-username')!.value.trim();
+    const password = card.querySelector<HTMLInputElement>('.xtream-password')!.value;
+    if (!url || !username || !password) return;
+    void this.loadLiveCategories(id, url, username, password);
+  }
+
+  private toggleLiveCategory(btn: HTMLElement): void {
+    const id = btn.dataset.accountId || '';
+    const categoryId = btn.dataset.categoryId || '';
+    const choices = this.liveCategoryChoices.get(id);
+    const choice = choices?.find(c => c.id === categoryId);
+    if (!choice) return;
+    choice.enabled = !choice.enabled;
+    btn.classList.toggle('active', choice.enabled);
+    btn.setAttribute('aria-pressed', choice.enabled ? 'true' : 'false');
+    const header = btn.closest('.xtream-categories')?.querySelector('.xtream-categories-header span');
+    if (header) {
+      header.textContent = t('settings.liveCategoriesCount', {
+        enabled: choices!.filter(c => c.enabled).length,
+        total: choices!.length,
+      });
+    }
+  }
+
+  private renderLiveCategoriesSlot(id: string): void {
+    const el = $(`#xtream-entries .xtream-card[data-id="${id}"] .xtream-categories-slot`, this.container);
+    if (!el) return;
+    morph(el, xtreamCategoriesBlock(
+      id,
+      this.liveCategoryChoices.get(id) ?? [],
+      this.liveCategoryState.get(id) ?? 'idle',
+    ));
   }
 
   private setXtreamStatus(id: string, content: Safe, cls: '' | 'ok' | 'err'): void {
@@ -1702,6 +1846,7 @@ export class Settings {
     // at load time; the base URL is normalized so a bare host still resolves.
     const accounts: PlaylistEntry[] = [];
     const cards = $$('#xtream-entries .xtream-card', this.container) as HTMLElement[];
+    const storedAccounts = StorageService.getPlaylists();
     for (const card of cards) {
       const rawUrl = card.querySelector<HTMLInputElement>('.xtream-url')!.value.trim();
       const username = card.querySelector<HTMLInputElement>('.xtream-username')!.value.trim();
@@ -1712,12 +1857,17 @@ export class Settings {
       const liveOutput = normalizeXtreamLiveOutputPreference(
         card.querySelector<HTMLElement>('.xtream-output .dropdown')!.dataset.value,
       );
+      const id = card.dataset.id || genPlaylistId();
+      // A card the user never ran discovery on this session keeps whatever
+      // was already saved for it (including nothing, i.e. unfiltered).
+      const liveCategories = this.liveCategoryChoices.get(id)
+        ?? storedAccounts.find(pl => pl.id === id)?.xtream?.liveCategories;
       const entry: PlaylistEntry = {
-        id: card.dataset.id || genPlaylistId(),
+        id,
         name: name || base.replace(/^https?:\/\//i, ''),
         url: base,
         source: 'xtream',
-        xtream: { username, password, liveOutput },
+        xtream: { username, password, liveOutput, ...(liveCategories ? { liveCategories } : {}) },
       };
       accounts.push(withEnabledState(
         entry,

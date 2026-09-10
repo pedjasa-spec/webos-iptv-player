@@ -168,9 +168,23 @@ export interface PlaylistEntry {
     username: string;
     password: string;
     liveOutput?: import('./utils/xtream-url').XtreamLiveOutputPreference;
+    /** Live category allow-list. Undefined means unfiltered (every category
+     *  loaded) — the pre-filtering default, unchanged for anyone who never
+     *  opens the category picker. Once set, only `enabled: true` categories'
+     *  channels (and their programme guide data) are ever loaded. Re-running
+     *  discovery adds newly seen categories as `enabled: false` and leaves
+     *  previously seen ones untouched. */
+    liveCategories?: XtreamLiveCategoryChoice[];
   };
   /** Channel count, populated for 'upload' entries by reconcile() from UploadMeta. */
   count?: number;
+}
+
+/** One discovered Xtream live category and whether its channels load. */
+export interface XtreamLiveCategoryChoice {
+  id: string;
+  name: string;
+  enabled: boolean;
 }
 
 /** A per-channel display customization, keyed by `channelKey(ch)`. */

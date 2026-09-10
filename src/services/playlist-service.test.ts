@@ -404,6 +404,44 @@ http://host:8080/live/u1/p1/102.ts`;
     });
   });
 
+  it('skips get.php and only materializes enabled categories when a filter is configured', async () => {
+    storageMock.getPlaylists.mockReturnValue([
+      {
+        id: 'x', name: 'Acct', url: 'http://host:8080', source: 'xtream',
+        xtream: {
+          username: 'u1', password: 'p1',
+          liveCategories: [
+            { id: '1', name: 'News', enabled: true },
+            { id: '2', name: 'Sports', enabled: false },
+          ],
+        },
+      },
+    ]);
+    fetchTextMock.mockImplementation((url: string) => {
+      if (url.includes('action=get_live_categories')) {
+        return Promise.resolve(JSON.stringify([
+          { category_id: '1', category_name: 'News' },
+          { category_id: '2', category_name: 'Sports' },
+        ]));
+      }
+      if (url.includes('action=get_live_streams')) {
+        return Promise.resolve(JSON.stringify([
+          { stream_id: 201, name: 'Alpha', category_id: '1', tv_archive: 1, tv_archive_duration: 2 },
+          { stream_id: 202, name: 'Bravo', category_id: '2' },
+        ]));
+      }
+      throw new Error('get.php should not be fetched when a category filter is configured');
+    });
+
+    const channels = await PlaylistService.refresh();
+
+    expect(channels.map(c => c.name)).toEqual(['Alpha']);
+    expect(channels[0]).toMatchObject({ group: 'News', catchup: 'xtream', catchupDays: 2 });
+    // The catchup pass reuses the already-filtered streams instead of a second fetch.
+    expect(fetchTextMock.mock.calls.filter(([url]) =>
+      url.includes('action=get_live_streams'))).toHaveLength(1);
+  });
+
   it('uses the selected HLS output for Player API fallback URLs', async () => {
     storageMock.getPlaylists.mockReturnValue([
       { id: 'x', name: 'Acct', url: 'http://host:8080', source: 'xtream',
