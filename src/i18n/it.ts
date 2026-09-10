@@ -118,6 +118,7 @@ export const IT_MESSAGES = {
   'epg.reminderRemoved': 'Promemoria rimosso',
   'epg.reminderSet': 'Promemoria impostato',
   'epg.catchupUnavailable': 'Questo programma non è disponibile in replay.',
+  'epg.loadFailed': 'Impossibile caricare la guida programmi. Verrà ritentato.',
   'catalog.continueWatching': 'Continua a guardare',
   'catalog.allCategories': 'Tutte le categorie',
   'catalog.noMovies': 'Nessun film disponibile per questo account.',

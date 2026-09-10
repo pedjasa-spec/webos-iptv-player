@@ -121,6 +121,7 @@ export const EN_MESSAGES = {
   'epg.reminderRemoved': 'Reminder removed',
   'epg.reminderSet': 'Reminder set',
   'epg.catchupUnavailable': "This program isn't available for catch-up.",
+  'epg.loadFailed': 'Unable to load the program guide. It will try again.',
   'catalog.continueWatching': 'Continue Watching',
   'catalog.allCategories': 'All Categories',
   'catalog.noMovies': 'No movies are available for this account.',

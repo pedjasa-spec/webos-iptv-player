@@ -122,6 +122,7 @@ export const RU_MESSAGES = {
   'epg.reminderRemoved': 'Напоминание удалено',
   'epg.reminderSet': 'Напоминание установлено',
   'epg.catchupUnavailable': 'Эта передача недоступна в архиве.',
+  'epg.loadFailed': 'Не удалось загрузить программу передач. Попытка будет повторена.',
   'catalog.continueWatching': 'Продолжить просмотр',
   'catalog.allCategories': 'Все категории',
   'catalog.noMovies': 'Для этого аккаунта нет доступных фильмов.',

@@ -122,6 +122,7 @@ export const UK_MESSAGES = {
   'epg.reminderRemoved': 'Нагадування видалено',
   'epg.reminderSet': 'Нагадування встановлено',
   'epg.catchupUnavailable': 'Ця програма недоступна в архіві.',
+  'epg.loadFailed': 'Не вдалося завантажити програму передач. Спробу буде повторено.',
   'catalog.continueWatching': 'Продовжити перегляд',
   'catalog.allCategories': 'Усі категорії',
   'catalog.noMovies': 'Для цього облікового запису немає доступних фільмів.',

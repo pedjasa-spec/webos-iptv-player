@@ -64,9 +64,19 @@ class EpgServiceImpl {
   private playlistChannels: Channel[] | null = null;
   private revision = 0;
   private mappingRevisionValue = 0;
+  private fetchFailureHandler: ((source: EpgSource, err: unknown) => void) | null = null;
 
   get mappingRevision(): number {
     return this.mappingRevisionValue;
+  }
+
+  /**
+   * Called whenever a source's XMLTV fetch/parse throws (network error,
+   * timeout, worker failure) — the failure is otherwise only logged, so
+   * a stuck/failed refresh is silent to the user.
+   */
+  setFetchFailureHandler(handler: (source: EpgSource, err: unknown) => void): void {
+    this.fetchFailureHandler = handler;
   }
 
   /**
@@ -467,6 +477,7 @@ class EpgServiceImpl {
       }
     } catch (err) {
       log.error('Failed to load EPG:', source.url, err);
+      this.fetchFailureHandler?.(source, err);
     }
     done();
   }

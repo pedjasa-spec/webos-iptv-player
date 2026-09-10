@@ -88,6 +88,7 @@ beforeEach(() => {
   channelOverrideMock.mockReturnValue(null);
   epgChannelIdsMock.mockReturnValue([]);
   EpgService.reset();
+  EpgService.setFetchFailureHandler(() => {});
   vi.mocked(getCachedEpg).mockResolvedValue(null);
 });
 
@@ -395,6 +396,19 @@ describe('EpgService cache and refresh', () => {
 
     const id = EpgService.findChannelId(channel({ id: 'a', name: 'Alpha', playlistIds: ['a'] }));
     expect(EpgService.getNowPlaying(id!)?.title).toBe('Cached');
+  });
+
+  it('reports a fetch failure through the registered handler', async () => {
+    vi.mocked(fetchMaybeGzipText).mockRejectedValue(new Error('down'));
+    const onFetchFailure = vi.fn();
+    EpgService.setFetchFailureHandler(onFetchFailure);
+
+    await EpgService.load([source('http://a', ['a'])]);
+
+    expect(onFetchFailure).toHaveBeenCalledTimes(1);
+    const [failedSource, err] = onFetchFailure.mock.calls[0] as [EpgSource, Error];
+    expect(failedSource.url).toBe('http://a');
+    expect(err.message).toBe('down');
   });
 
   it('publishes stale cached programmes while their refresh is in flight', async () => {

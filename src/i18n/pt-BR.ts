@@ -118,6 +118,7 @@ export const PT_BR_MESSAGES = {
   'epg.reminderRemoved': 'Lembrete removido',
   'epg.reminderSet': 'Lembrete definido',
   'epg.catchupUnavailable': 'Este programa não está disponível na reprise.',
+  'epg.loadFailed': 'Não foi possível carregar o guia de programação. Será tentado novamente.',
   'catalog.continueWatching': 'Continuar assistindo',
   'catalog.allCategories': 'Todas as categorias',
   'catalog.noMovies': 'Nenhum filme disponível para esta conta.',

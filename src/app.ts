@@ -74,6 +74,7 @@ class App {
     log.info('Initializing app');
     await StorageService.init();
     StorageService.setWriteFailureHandler(() => showToast(t('app.saveFailed')));
+    EpgService.setFetchFailureHandler(() => showToast(t('epg.loadFailed')));
     initLocale(StorageService.getLocalePreference());
     const initialLoadingText = $('#loading-text');
     if (initialLoadingText) initialLoadingText.textContent = t('common.loading');

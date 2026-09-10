@@ -118,6 +118,7 @@ export const DE_MESSAGES = {
   'epg.reminderRemoved': 'Erinnerung entfernt',
   'epg.reminderSet': 'Erinnerung eingestellt',
   'epg.catchupUnavailable': 'Diese Sendung ist nicht als Catch-up verfügbar.',
+  'epg.loadFailed': 'Der Programmführer konnte nicht geladen werden. Es wird erneut versucht.',
   'catalog.continueWatching': 'Weiterschauen',
   'catalog.allCategories': 'Alle Kategorien',
   'catalog.noMovies': 'Für dieses Konto sind keine Filme verfügbar.',

@@ -118,6 +118,7 @@ export const FR_MESSAGES = {
   'epg.reminderRemoved': 'Rappel supprimé',
   'epg.reminderSet': 'Rappel défini',
   'epg.catchupUnavailable': 'Ce programme n’est pas disponible en rattrapage.',
+  'epg.loadFailed': 'Impossible de charger le guide des programmes. Nouvelle tentative à venir.',
   'catalog.continueWatching': 'Continuer à regarder',
   'catalog.allCategories': 'Toutes les catégories',
   'catalog.noMovies': 'Aucun film disponible pour ce compte.',

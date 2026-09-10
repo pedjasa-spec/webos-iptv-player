@@ -116,6 +116,7 @@ export const ZH_CN_MESSAGES = {
   'epg.reminderRemoved': '已取消提醒',
   'epg.reminderSet': '已设置提醒',
   'epg.catchupUnavailable': '此节目暂不支持回看。',
+  'epg.loadFailed': '无法加载节目指南，将会重试。',
   'catalog.continueWatching': '继续观看',
   'catalog.allCategories': '全部分类',
   'catalog.noMovies': '此账号没有可用的电影。',

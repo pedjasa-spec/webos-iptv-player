@@ -118,6 +118,7 @@ export const ES_MESSAGES = {
   'epg.reminderRemoved': 'Recordatorio eliminado',
   'epg.reminderSet': 'Recordatorio configurado',
   'epg.catchupUnavailable': 'Este programa no está disponible en repetición.',
+  'epg.loadFailed': 'No se pudo cargar la guía de programación. Se volverá a intentar.',
   'catalog.continueWatching': 'Seguir viendo',
   'catalog.allCategories': 'Todas las categorías',
   'catalog.noMovies': 'No hay películas disponibles para esta cuenta.',
