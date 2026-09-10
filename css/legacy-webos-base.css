@@ -61,6 +61,7 @@
   .settings-nav-help-row > * + * { margin-left: 9px; }
   .settings-general-row > * + * { margin-left: 0; }
   .settings-row > * + * { margin-left: 16px; }
+  .backup-panel > * + * { margin-top: 12px; }
   .epg-offset-controls > * + * { margin-left: 10px; }
   .epg-offset-stepper > * + * { margin-left: 10px; }
   .settings-field > * + * { margin-top: 6px; }

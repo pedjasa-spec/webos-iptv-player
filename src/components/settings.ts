@@ -20,6 +20,13 @@ import {
 } from '../services/idb-cache';
 import { UploadClient, uploadIdFromUrl } from '../services/upload-client';
 import { SetupClient } from '../services/setup-client';
+import { BackupClient } from '../services/backup-client';
+import {
+  applyImportPayload,
+  buildExportPayload,
+  validateImportPayload,
+  type SettingsBackupPayload,
+} from '../services/settings-backup';
 import { ReminderService } from '../services/reminder-service';
 import {
   ChannelHealthService,
@@ -319,6 +326,15 @@ function mergeLiveCategories(
 
 type LiveCategoryState = 'idle' | 'loading' | 'error';
 
+type BackupPanelState =
+  | 'idle'
+  | 'export-options'
+  | 'export-generating'
+  | 'export-ready'
+  | 'export-error'
+  | 'import-waiting'
+  | 'import-error';
+
 function xtreamCategoriesBlock(
   accountId: string,
   choices: XtreamLiveCategoryChoice[],
@@ -438,6 +454,10 @@ export class Settings {
   // Seeded from storage on render(); save() writes back whatever is here.
   private liveCategoryChoices = new Map<string, XtreamLiveCategoryChoice[]>();
   private liveCategoryState = new Map<string, LiveCategoryState>();
+  private backupPanelState: BackupPanelState = 'idle';
+  private backupExportUrl = '';
+  private backupImportUrl = '';
+  private pendingImport: { payload: SettingsBackupPayload; appVersionNewer: boolean } | null = null;
 
   constructor(
     container: HTMLElement,
@@ -809,6 +829,18 @@ export class Settings {
                   <div class="settings-item-hint">${t('settings.resetAppDescription')}</div>
                 </div>
               </div>
+
+              <div class="settings-section">
+                <h3 class="settings-section-title">${t('settings.backupTitle')}</h3>
+                <div class="settings-maintenance">
+                  <button class="btn btn-secondary" data-focusable id="export-settings">${t('settings.exportSettings')}</button>
+                  <button class="btn btn-danger" data-focusable id="import-settings">${t('settings.importSettings')}</button>
+                </div>
+                <div class="settings-item-hint settings-item-hint--warning">
+                  ${t('settings.backupKeepOpenWarning')}
+                </div>
+                <div id="backup-panel">${this.backupPanelContent()}</div>
+              </div>
             </div>
 
             <div class="settings-about">
@@ -1085,6 +1117,12 @@ export class Settings {
         onConfirm: () => { void this.clearCache(); },
         onCancel: () => {},
       });
+    } else if (el.id === 'export-settings') {
+      this.startExportSettings();
+    } else if (el.id === 'backup-generate') {
+      void this.generateBackupExport();
+    } else if (el.id === 'import-settings') {
+      void this.startImportSettings();
     } else if (el.id === 'reset-app') {
       this.confirmationPrompt.show({
         title: t('settings.resetAppTitle'),
@@ -2012,6 +2050,189 @@ export class Settings {
     } else {
       morph(target, html`<span>${t('settings.setupUnavailable')}</span>`);
     }
+  }
+
+  private backupPanelContent(): Safe {
+    switch (this.backupPanelState) {
+      case 'export-options':
+        return html`
+          <div class="backup-panel">
+            <button class="source-toggle" data-focusable id="backup-password-toggle"
+                    data-enabled="false" aria-pressed="false">
+              <span class="source-toggle-track" aria-hidden="true">
+                <span class="source-toggle-knob"></span>
+              </span>
+              <span class="source-toggle-label">${t('settings.backupIncludePasswords')}</span>
+            </button>
+            <div class="settings-item-hint">${t('settings.backupPasswordWarning')}</div>
+            <button class="btn btn-primary" data-focusable id="backup-generate">
+              ${t('settings.backupGenerate')}
+            </button>
+          </div>`;
+      case 'export-generating':
+        return html`<div class="backup-panel-status">${t('common.loading')}</div>`;
+      case 'export-ready':
+        return html`
+          <div class="backup-panel">
+            <img class="setup-qr" alt="${t('settings.qrAlt', { url: this.backupExportUrl })}"
+                 src="${qrDataUrl(this.backupExportUrl)}">
+            <div class="backup-expiry-note">${t('settings.backupExpiryNote')}</div>
+          </div>`;
+      case 'import-waiting':
+        return html`
+          <div class="backup-panel">
+            <img class="setup-qr" alt="${t('settings.qrAlt', { url: this.backupImportUrl })}"
+                 src="${qrDataUrl(this.backupImportUrl)}">
+            <div class="backup-expiry-note">${t('settings.backupExpiryNote')}</div>
+          </div>`;
+      case 'export-error':
+      case 'import-error':
+        return html`<div class="backup-panel-status backup-panel-error">
+          ${t('settings.backupServiceUnavailable')}
+        </div>`;
+      default:
+        return html``;
+    }
+  }
+
+  private renderBackupPanel(): void {
+    const el = $('#backup-panel', this.container);
+    if (!el) return;
+    morph(el, this.backupPanelContent());
+  }
+
+  private resetBackupPanel(): void {
+    this.backupPanelState = 'idle';
+    this.backupExportUrl = '';
+    this.backupImportUrl = '';
+    this.pendingImport = null;
+    this.renderBackupPanel();
+  }
+
+  private startExportSettings(): void {
+    this.backupPanelState = 'export-options';
+    this.renderBackupPanel();
+  }
+
+  private async generateBackupExport(): Promise<void> {
+    const toggle = $('#backup-password-toggle', this.container);
+    const includePasswords = toggle?.dataset.enabled === 'true';
+    this.backupPanelState = 'export-generating';
+    this.renderBackupPanel();
+    const [payload, info] = await Promise.all([
+      buildExportPayload(includePasswords),
+      SetupClient.getInfo(),
+    ]);
+    const token = await BackupClient.stageExport(JSON.stringify(payload));
+    if (!token || !info) {
+      log.warn(
+        'Settings backup export failed to stage',
+        'event=backup.export.failed',
+        'operation=export',
+      );
+      this.backupPanelState = 'export-error';
+      this.renderBackupPanel();
+      return;
+    }
+    this.backupExportUrl = `http://${info.ip}:${info.port}/backup?token=${encodeURIComponent(token)}`;
+    this.backupPanelState = 'export-ready';
+    this.renderBackupPanel();
+  }
+
+  private async startImportSettings(): Promise<void> {
+    this.backupPanelState = 'export-generating'; // reuse the loading state visually
+    this.renderBackupPanel();
+    const [info, importToken] = await Promise.all([
+      SetupClient.getInfo(),
+      BackupClient.openImportWindow(),
+    ]);
+    const setupToken = info ? new URL(info.setupUrl).searchParams.get('token') : null;
+    if (!info || !importToken || !setupToken) {
+      log.warn(
+        'Settings backup import window failed to open',
+        'event=backup.import.open_failed',
+        'operation=import',
+      );
+      this.backupPanelState = 'import-error';
+      this.renderBackupPanel();
+      return;
+    }
+    this.backupImportUrl = `${info.manualUrl}/setup?token=${encodeURIComponent(setupToken)}` +
+      `&backup=${encodeURIComponent(importToken)}`;
+    this.backupPanelState = 'import-waiting';
+    this.renderBackupPanel();
+  }
+
+  /** Called by App when the bundled service reports a phone-submitted backup. */
+  async handleBackupImportReady(): Promise<void> {
+    const raw = await BackupClient.fetchPendingImport();
+    if (!raw) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      await BackupClient.clearPendingImport();
+      showToast(t('settings.backupImportInvalid'));
+      this.resetBackupPanel();
+      return;
+    }
+    const result = validateImportPayload(parsed);
+    if (!result.ok) {
+      await BackupClient.clearPendingImport();
+      showToast(result.reason === 'schema'
+        ? t('settings.backupImportTooNew')
+        : t('settings.backupImportInvalid'));
+      this.resetBackupPanel();
+      return;
+    }
+    this.pendingImport = result;
+    const dateLabel = new Date(result.payload.exportedAt).toLocaleString();
+    const message = result.appVersionNewer
+      ? t('settings.backupImportMessage', { date: dateLabel }) + ' ' +
+        t('settings.backupImportNewerVersion', { version: result.payload.appVersion })
+      : t('settings.backupImportMessage', { date: dateLabel });
+    this.confirmationPrompt.show({
+      title: t('settings.backupImportTitle'),
+      message,
+      confirmLabel: t('settings.backupImportConfirm'),
+      cancelLabel: t('common.cancel'),
+      onConfirm: () => { void this.applyPendingImport(); },
+      onCancel: () => {
+        void BackupClient.clearPendingImport();
+        this.resetBackupPanel();
+      },
+    });
+  }
+
+  private async applyPendingImport(): Promise<void> {
+    const pending = this.pendingImport;
+    if (!pending) return;
+    try {
+      await applyImportPayload(pending.payload);
+      await BackupClient.clearPendingImport();
+    } catch (err) {
+      log.error(
+        'Settings backup import failed to apply',
+        'event=backup.import.failed',
+        'operation=apply',
+        err,
+      );
+      showToast(t('settings.backupImportFailed'));
+      this.resetBackupPanel();
+      return;
+    }
+    // A full reload is required: personal data was written straight to
+    // IndexedDB, bypassing StorageService's in-memory cache, which only
+    // repopulates from scratch on init(). The delay lets the toast (in
+    // particular the "enter passwords manually" one) actually be read.
+    const delay = pending.payload.includesPasswords ? 1200 : 4000;
+    showToast(
+      pending.payload.includesPasswords
+        ? t('settings.backupImportSuccess')
+        : t('settings.backupImportPasswordsExcluded'),
+      delay,
+    );
+    setTimeout(() => location.reload(), delay);
   }
 
   private async removeUpload(url: string): Promise<void> {

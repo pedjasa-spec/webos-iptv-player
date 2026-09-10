@@ -607,3 +607,120 @@ describe('startServer onChange callback (Luna push fan-out source)', () => {
     }
   });
 });
+
+describe('backup export (PUT/GET /backup)', () => {
+  it('stages a blob and returns it once to the matching token, then 404s', async () => {
+    const put = await fetch(`${baseUrl}/backup`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schemaVersion: 1, hello: 'world' }),
+    });
+    expect(put.status).toBe(200);
+    const { token } = await put.json() as { token: string };
+    expect(token).toMatch(/^[a-f0-9]{18}$/);
+
+    const get = await fetch(`${baseUrl}/backup?token=${token}`);
+    expect(get.status).toBe(200);
+    expect(get.headers.get('content-disposition'))
+      .toMatch(/^attachment; filename="iptv-settings-\d{4}-\d{2}-\d{2}\.json"$/);
+    expect(await get.json()).toEqual({ schemaVersion: 1, hello: 'world' });
+
+    // Single-use: the same token cannot download a second time.
+    expect((await fetch(`${baseUrl}/backup?token=${token}`)).status).toBe(404);
+  });
+
+  it('rejects a download with the wrong token', async () => {
+    await fetch(`${baseUrl}/backup`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schemaVersion: 1 }),
+    });
+    expect((await fetch(`${baseUrl}/backup?token=wrong`)).status).toBe(404);
+  });
+});
+
+describe('backup import (POST /backup-import-token, POST/GET/DELETE /backup-import)', () => {
+  it('opens a window, accepts one upload for that token, and hands it to the device once', async () => {
+    const tokenRes = await fetch(`${baseUrl}/backup-import-token`, { method: 'POST' });
+    expect(tokenRes.status).toBe(200);
+    const { token } = await tokenRes.json() as { token: string };
+
+    const upload = await fetch(`${baseUrl}/backup-import?token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schemaVersion: 1, restored: true }),
+    });
+    expect(upload.status).toBe(200);
+
+    const pulled = await fetch(`${baseUrl}/backup-import`);
+    expect(pulled.status).toBe(200);
+    expect(await pulled.json()).toEqual({ schemaVersion: 1, restored: true });
+
+    // Single-use: the device already took it.
+    expect((await fetch(`${baseUrl}/backup-import`)).status).toBe(404);
+  });
+
+  it('rejects an upload for the wrong token', async () => {
+    await fetch(`${baseUrl}/backup-import-token`, { method: 'POST' });
+    const res = await fetch(`${baseUrl}/backup-import?token=wrong`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schemaVersion: 1 }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects an upload that is not valid JSON or lacks a schemaVersion', async () => {
+    const tokenRes = await fetch(`${baseUrl}/backup-import-token`, { method: 'POST' });
+    const { token } = await tokenRes.json() as { token: string };
+    const badJson = await fetch(`${baseUrl}/backup-import?token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'not json',
+    });
+    expect(badJson.status).toBe(400);
+
+    const tokenRes2 = await fetch(`${baseUrl}/backup-import-token`, { method: 'POST' });
+    const { token: token2 } = await tokenRes2.json() as { token: string };
+    const noVersion = await fetch(`${baseUrl}/backup-import?token=${token2}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ no: 'version' }),
+    });
+    expect(noVersion.status).toBe(400);
+  });
+
+  it('DELETE clears a pending upload the device never pulled', async () => {
+    const tokenRes = await fetch(`${baseUrl}/backup-import-token`, { method: 'POST' });
+    const { token } = await tokenRes.json() as { token: string };
+    await fetch(`${baseUrl}/backup-import?token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schemaVersion: 1 }),
+    });
+    const del = await fetch(`${baseUrl}/backup-import`, { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    expect((await fetch(`${baseUrl}/backup-import`)).status).toBe(404);
+  });
+
+  it('fires backup-changed when an import is accepted', async () => {
+    const onChange = vi.fn();
+    const localDir = fs.mkdtempSync(path.join(os.tmpdir(), 'backup-svc-cb-'));
+    const { server: s } = await startServer(0, localDir, onChange);
+    const port = (s.address() as { port: number }).port;
+    try {
+      const tokenRes = await fetch(`http://127.0.0.1:${port}/backup-import-token`, { method: 'POST' });
+      const { token } = await tokenRes.json() as { token: string };
+      const res = await fetch(`http://127.0.0.1:${port}/backup-import?token=${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schemaVersion: 1 }),
+      });
+      expect(res.status).toBe(200);
+      expect(onChange).toHaveBeenCalledWith('backup-changed');
+    } finally {
+      await new Promise<void>((resolve) => s.close(() => resolve()));
+      fs.rmSync(localDir, { recursive: true, force: true });
+    }
+  });
+});

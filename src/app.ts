@@ -511,7 +511,9 @@ class App {
   /**
    * Subscribe to the bundled service's `serviceEvents` push channel. Upload
    * changes refresh the managed upload list; phone setup changes consume the
-   * queued Playlist, Xtream, or EPG action and reload channel data. No polling.
+   * queued Playlist, Xtream, or EPG action and reload channel data; a
+   * phone-submitted settings backup is handed to Settings to validate and
+   * confirm before it replaces anything. No polling.
    *
    * Subscription is best-effort: if Luna isn't available (desktop/e2e) or
    * the subscribe call fails, we silently fall back to the explicit
@@ -536,6 +538,12 @@ class App {
           if (resp && typeof resp === 'object' &&
               (resp as { event?: unknown }).event === 'setup-changed') {
             void this.queueDeviceSetupSync();
+            return;
+          }
+          if (resp && typeof resp === 'object' &&
+              (resp as { event?: unknown }).event === 'backup-changed') {
+            void this.settings.handleBackupImportReady()
+              .catch(err => log.error('Settings backup import handling failed:', err));
             return;
           }
           void this.settings.refreshUploads()

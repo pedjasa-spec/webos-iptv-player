@@ -22,8 +22,9 @@ import {
 } from '../setup/actions';
 import { parseSetupState, SetupStateStore } from '../setup/state';
 import { isValidUploadId, UploadStore } from '../upload/store';
+import { BackupStore, parseBackupPayload } from '../backup/store';
 
-export type ServiceChangeEvent = 'uploads-changed' | 'setup-changed';
+export type ServiceChangeEvent = 'uploads-changed' | 'setup-changed' | 'backup-changed';
 
 const PAIRING_MAX_FAILURES = 5;
 const PAIRING_LOCK_MS = 60 * 1000;
@@ -38,12 +39,19 @@ function getLanIp(): string {
   return 'localhost';
 }
 
-function send(res: http.ServerResponse, status: number, contentType: string, body: string | Buffer): void {
+function send(
+  res: http.ServerResponse,
+  status: number,
+  contentType: string,
+  body: string | Buffer,
+  extraHeaders?: Record<string, string>,
+): void {
   const buf = typeof body === 'string' ? bufferFrom(body, 'utf-8') : body;
   res.writeHead(status, {
     'Content-Type': contentType,
     'Content-Length': buf.length,
     'Access-Control-Allow-Origin': '*',
+    ...extraHeaders,
   });
   res.end(buf);
 }
@@ -104,6 +112,7 @@ export function startServer(
   onChange?: (event: ServiceChangeEvent) => void,
   setupActions = new SetupActionStore(),
   setupState = new SetupStateStore(),
+  backup = new BackupStore(),
 ): Promise<{ server: http.Server; port: number }> {
   let boundPort = port;
   const setupToken = randomBytes(6).toString('hex');
@@ -274,9 +283,75 @@ export function startServer(
             send(res, 404, 'text/plain; charset=utf-8', 'Upload not found: ' + id);
           }
         }
+      } else if (pathname === '/backup' && req.method === 'PUT') {
+        // Export: the TV stages a blob (trusted, already assembled by the
+        // app) and gets back a single-use token, separate from setupToken,
+        // that the phone uses once to download it.
+        if (!isLoopback(req)) {
+          sendJson(res, 403, { error: 'Local access only' });
+          return;
+        }
+        try {
+          const token = backup.stageExport(await readBody(req, 4 * 1024 * 1024));
+          sendJson(res, 200, { token });
+        } catch (e) {
+          sendJson(res, 400, { error: e instanceof Error ? e.message : String(e) });
+        }
+      } else if (pathname === '/backup' && req.method === 'GET') {
+        const data = backup.takeExport(query('token') || '');
+        if (data === null) {
+          sendJson(res, 404, { error: 'No backup is staged for that token' });
+          return;
+        }
+        const date = new Date().toISOString().slice(0, 10);
+        send(res, 200, 'application/json; charset=utf-8', data, {
+          'Content-Disposition': 'attachment; filename="iptv-settings-' + date + '.json"',
+        });
+      } else if (pathname === '/backup-import-token' && req.method === 'POST') {
+        // Import: the TV opens a one-shot upload window and shows its token
+        // (as a QR code) before the phone sends anything.
+        if (!isLoopback(req)) {
+          sendJson(res, 403, { error: 'Local access only' });
+          return;
+        }
+        sendJson(res, 200, { token: backup.stageImportToken() });
+      } else if (pathname === '/backup-import' && req.method === 'POST') {
+        // Gated by its own token from /backup-import-token, not setupToken.
+        try {
+          const raw = parseBackupPayload(await readBody(req, 4 * 1024 * 1024));
+          const accepted = backup.acceptImport(query('token') || '', raw);
+          if (!accepted) {
+            sendJson(res, 403, { error: 'No import window is open for that token' });
+            return;
+          }
+          try { onChange?.('backup-changed'); } catch (cbErr) {
+            console.error('[lan] onChange callback threw:', cbErr);
+          }
+          sendJson(res, 200, { accepted: true });
+        } catch (e) {
+          sendJson(res, 400, { error: e instanceof Error ? e.message : String(e) });
+        }
+      } else if (pathname === '/backup-import' && req.method === 'GET') {
+        if (!isLoopback(req)) {
+          sendJson(res, 403, { error: 'Local access only' });
+          return;
+        }
+        const data = backup.takeImport();
+        if (data === null) {
+          sendJson(res, 404, { error: 'No backup has been uploaded' });
+          return;
+        }
+        send(res, 200, 'application/json; charset=utf-8', data);
+      } else if (pathname === '/backup-import' && req.method === 'DELETE') {
+        if (!isLoopback(req)) {
+          sendJson(res, 403, { error: 'Local access only' });
+          return;
+        }
+        backup.clearImport();
+        sendJson(res, 200, { cleared: true });
       } else {
         send(res, 404, 'text/plain; charset=utf-8',
-          'Not found. Use /setup, /setup-actions, /uploads, or /info');
+          'Not found. Use /setup, /setup-actions, /uploads, /backup, or /info');
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

@@ -417,6 +417,16 @@
   .config-status.ok { color: #23845a; }
   .config-status.err { color: #c43b4d; }
 
+  .restore-status {
+    min-height: 16px;
+    margin: 12px 0 0;
+    color: #6c7488;
+    font-size: 13px;
+    text-align: center;
+  }
+  .restore-status.ok { color: #23845a; }
+  .restore-status.err { color: #c43b4d; }
+
   .section { font-size: 14px; font-weight: 600; color: #1a2138; margin: 28px 0 8px; }
   ul { list-style: none; padding: 0; margin: 0; }
   .empty { color: #8a93a8; font-size: 14px; padding: 16px; text-align: center; }
@@ -672,6 +682,24 @@
     <ul id="list"><li class="empty">No playlists yet</li></ul>
   </div>
 
+  <div class="card" id="backup-card" hidden>
+    <h1 class="title" data-message="restoreTitle">Restore settings</h1>
+    <p class="subtitle" data-message="restoreInstructions">
+      Choose the settings backup file you exported from the TV.
+    </p>
+    <label class="drop" id="backup-drop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 8v11"/>
+        <path d="M7.5 13.5L12 18l4.5-4.5"/>
+        <rect x="4" y="3" width="16" height="4" rx="1"/>
+      </svg>
+      <span class="browse" data-message="restoreChooseFile">Choose file</span>
+      <input type="file" id="backup-file" accept=".json,application/json">
+    </label>
+    <p class="restore-status" id="backup-status" aria-live="polite"></p>
+  </div>
+
 <script>
   var drop = document.getElementById("drop");
   var fileEl = document.getElementById("file");
@@ -683,6 +711,8 @@
   var pairSlots = pairForm.querySelectorAll(".pair-slot");
   var pairStatus = pairForm.querySelector(".pair-status");
   var setupCard = document.getElementById("setup-card");
+  var backupCard = document.getElementById("backup-card");
+  var backupImportToken = new URLSearchParams(window.location.search).get("backup") || "";
   var languageTrigger = document.getElementById("language-trigger");
   var languageMenu = document.getElementById("language-menu");
   var languageCurrent = document.getElementById("language-current");
@@ -755,6 +785,14 @@
         success: "Successfully uploaded",
         failed: "Failed: ",
         networkError: "Failed: network error",
+        restoreTitle: "Restore settings",
+        restoreInstructions: "Choose the settings backup file you exported from the TV.",
+        restoreChooseFile: "Choose file",
+        restoreUploading: "Uploading…",
+        restoreSuccess: "Sent. Check the TV to finish restoring.",
+        restoreExpired: "This link has expired. Start over on the TV.",
+        restoreFailed: "Failed: ",
+        restoreNetworkError: "Failed: network error",
       },
     },
     de: {
@@ -815,6 +853,14 @@
         success: "Erfolgreich hochgeladen",
         failed: "Fehlgeschlagen: ",
         networkError: "Fehlgeschlagen: Netzwerkfehler",
+        restoreTitle: "Einstellungen wiederherstellen",
+        restoreInstructions: "Wähle die Sicherungsdatei, die du auf dem Fernseher exportiert hast.",
+        restoreChooseFile: "Datei auswählen",
+        restoreUploading: "Wird hochgeladen…",
+        restoreSuccess: "Gesendet. Auf dem Fernseher fortsetzen.",
+        restoreExpired: "Dieser Link ist abgelaufen. Auf dem Fernseher neu starten.",
+        restoreFailed: "Fehlgeschlagen: ",
+        restoreNetworkError: "Fehlgeschlagen: Netzwerkfehler",
       },
     },
     es: {
@@ -875,6 +921,14 @@
         success: "Archivo subido",
         failed: "Error: ",
         networkError: "Error: problema de red",
+        restoreTitle: "Restaurar configuración",
+        restoreInstructions: "Elegí el archivo de copia de seguridad exportado desde el televisor.",
+        restoreChooseFile: "Elegir archivo",
+        restoreUploading: "Subiendo…",
+        restoreSuccess: "Enviado. Revisá el televisor para terminar.",
+        restoreExpired: "Este enlace venció. Volvé a empezar en el televisor.",
+        restoreFailed: "Error: ",
+        restoreNetworkError: "Error: problema de red",
       },
     },
     fr: {
@@ -935,6 +989,14 @@
         success: "Importation réussie",
         failed: "Échec : ",
         networkError: "Échec : erreur réseau",
+        restoreTitle: "Restaurer les paramètres",
+        restoreInstructions: "Choisissez le fichier de sauvegarde exporté depuis le téléviseur.",
+        restoreChooseFile: "Choisir un fichier",
+        restoreUploading: "Envoi…",
+        restoreSuccess: "Envoyé. Terminez la restauration sur le téléviseur.",
+        restoreExpired: "Ce lien a expiré. Recommencez depuis le téléviseur.",
+        restoreFailed: "Échec : ",
+        restoreNetworkError: "Échec : erreur réseau",
       },
     },
     it: {
@@ -995,6 +1057,14 @@
         success: "Caricamento completato",
         failed: "Errore: ",
         networkError: "Errore di rete",
+        restoreTitle: "Ripristina impostazioni",
+        restoreInstructions: "Scegli il file di backup esportato dalla TV.",
+        restoreChooseFile: "Scegli file",
+        restoreUploading: "Caricamento…",
+        restoreSuccess: "Inviato. Completa il ripristino sulla TV.",
+        restoreExpired: "Il link è scaduto. Ricomincia dalla TV.",
+        restoreFailed: "Errore: ",
+        restoreNetworkError: "Errore di rete",
       },
     },
     "pt-BR": {
@@ -1055,6 +1125,14 @@
         success: "Enviado com sucesso",
         failed: "Falha: ",
         networkError: "Falha: erro de rede",
+        restoreTitle: "Restaurar configurações",
+        restoreInstructions: "Escolha o arquivo de backup exportado da TV.",
+        restoreChooseFile: "Escolher arquivo",
+        restoreUploading: "Enviando…",
+        restoreSuccess: "Enviado. Conclua a restauração na TV.",
+        restoreExpired: "Este link expirou. Comece de novo na TV.",
+        restoreFailed: "Falha: ",
+        restoreNetworkError: "Falha: erro de rede",
       },
     },
     ru: {
@@ -1117,6 +1195,14 @@
         success: "Успешно загружено",
         failed: "Ошибка: ",
         networkError: "Ошибка сети",
+        restoreTitle: "Восстановить настройки",
+        restoreInstructions: "Выберите файл резервной копии, экспортированный с телевизора.",
+        restoreChooseFile: "Выбрать файл",
+        restoreUploading: "Загрузка…",
+        restoreSuccess: "Отправлено. Завершите восстановление на телевизоре.",
+        restoreExpired: "Срок действия ссылки истёк. Начните заново на телевизоре.",
+        restoreFailed: "Ошибка: ",
+        restoreNetworkError: "Ошибка сети",
       },
     },
     uk: {
@@ -1179,6 +1265,14 @@
         success: "Успішно завантажено",
         failed: "Помилка: ",
         networkError: "Помилка мережі",
+        restoreTitle: "Відновити налаштування",
+        restoreInstructions: "Виберіть файл резервної копії, експортований з телевізора.",
+        restoreChooseFile: "Вибрати файл",
+        restoreUploading: "Завантаження…",
+        restoreSuccess: "Надіслано. Завершіть відновлення на телевізорі.",
+        restoreExpired: "Термін дії посилання минув. Почніть знову на телевізорі.",
+        restoreFailed: "Помилка: ",
+        restoreNetworkError: "Помилка мережі",
       },
     },
     "zh-CN": {
@@ -1238,6 +1332,14 @@
         success: "上传成功",
         failed: "失败：",
         networkError: "失败：网络错误",
+        restoreTitle: "恢复设置",
+        restoreInstructions: "选择从电视导出的设置备份文件。",
+        restoreChooseFile: "选择文件",
+        restoreUploading: "正在上传…",
+        restoreSuccess: "已发送，请在电视上完成恢复。",
+        restoreExpired: "链接已过期，请在电视上重新开始。",
+        restoreFailed: "失败：",
+        restoreNetworkError: "失败：网络错误",
       },
     },
   };
@@ -1409,6 +1511,12 @@
 
   function showSetup() {
     pairCard.hidden = true;
+    // A restore link (?backup=<token>) is single-purpose: show only the
+    // upload widget, not the full setup form, to keep it unambiguous.
+    if (backupImportToken) {
+      backupCard.hidden = false;
+      return;
+    }
     setupCard.hidden = false;
     refresh();
     refreshSetupState();
@@ -1917,6 +2025,43 @@
 
     xhr.open("POST", authenticatedUrl("/uploads?name=" + encodeURIComponent(file.name)));
     xhr.setRequestHeader("Content-Type", "text/plain; charset=utf-8");
+    xhr.send(file);
+  }
+
+  var backupFileEl = document.getElementById("backup-file");
+  var backupStatus = document.getElementById("backup-status");
+  if (backupFileEl) {
+    backupFileEl.addEventListener("change", function () {
+      var file = backupFileEl.files[0];
+      backupFileEl.value = "";
+      if (file) uploadBackup(file);
+    });
+  }
+
+  function uploadBackup(file) {
+    backupStatus.className = "restore-status";
+    backupStatus.textContent = tr("restoreUploading");
+    var xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+      var data = null;
+      try { data = JSON.parse(xhr.responseText); } catch (e) {}
+      if (xhr.status >= 200 && xhr.status < 300 && data && data.accepted) {
+        backupStatus.className = "restore-status ok";
+        backupStatus.textContent = tr("restoreSuccess");
+      } else if (xhr.status === 403) {
+        backupStatus.className = "restore-status err";
+        backupStatus.textContent = tr("restoreExpired");
+      } else {
+        backupStatus.className = "restore-status err";
+        backupStatus.textContent = tr("restoreFailed") + ((data && data.error) || ("HTTP " + xhr.status));
+      }
+    };
+    xhr.onerror = function () {
+      backupStatus.className = "restore-status err";
+      backupStatus.textContent = tr("restoreNetworkError");
+    };
+    xhr.open("POST", "/backup-import?token=" + encodeURIComponent(backupImportToken));
+    xhr.setRequestHeader("Content-Type", "application/json; charset=utf-8");
     xhr.send(file);
   }
 

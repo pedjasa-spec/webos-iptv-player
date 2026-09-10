@@ -13,6 +13,8 @@ const {
   uploadMock,
   xtreamMock,
   healthMock,
+  backupClientMock,
+  settingsBackupMock,
 } = vi.hoisted(() => {
   const state = {
     playlists: [] as {
@@ -128,6 +130,24 @@ const {
       })),
       reset: vi.fn(),
     },
+    backupClientMock: {
+      stageExport: vi.fn(async () => null as string | null),
+      openImportWindow: vi.fn(async () => null as string | null),
+      fetchPendingImport: vi.fn(async () => null as string | null),
+      clearPendingImport: vi.fn(async () => {}),
+    },
+    settingsBackupMock: {
+      buildExportPayload: vi.fn(async () => ({
+        schemaVersion: 1,
+        exportedAt: '2026-01-01T00:00:00.000Z',
+        appVersion: '1.0.0',
+        includesPasswords: false,
+        localStorage: {},
+        userData: {},
+      })),
+      applyImportPayload: vi.fn(async () => {}),
+      validateImportPayload: vi.fn(),
+    },
   };
 });
 
@@ -157,6 +177,8 @@ vi.mock('../services/reminder-service', () => ({
 }));
 vi.mock('../services/setup-client', () => ({ SetupClient: setupMock }));
 vi.mock('../services/channel-health', () => ({ ChannelHealthService: healthMock }));
+vi.mock('../services/backup-client', () => ({ BackupClient: backupClientMock }));
+vi.mock('../services/settings-backup', () => settingsBackupMock);
 
 import { Settings } from './settings';
 import { setLocale } from '../i18n';
@@ -1834,5 +1856,151 @@ describe('Settings Xtream section', () => {
 
     expect(container.querySelector('[data-category-id="1"]')!.classList.contains('active')).toBe(true);
     expect(container.querySelector('[data-category-id="2"]')!.classList.contains('active')).toBe(false);
+  });
+});
+
+describe('Settings backup export/import', () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it('Export Settings opens the password toggle and generate button', () => {
+    settings.render();
+    click('#export-settings');
+    expect(container.querySelector('#backup-password-toggle')).not.toBeNull();
+    expect(container.querySelector('#backup-generate')).not.toBeNull();
+  });
+
+  it('generates an export and shows its QR code, excluding passwords by default', async () => {
+    setupMock.getInfo.mockResolvedValue({
+      ip: '192.168.1.2',
+      port: 8890,
+      setupUrl: 'http://192.168.1.2:8890/setup?token=abc123',
+      manualUrl: 'http://192.168.1.2:8890',
+      pairingCode: '1234',
+    });
+    backupClientMock.stageExport.mockResolvedValueOnce('export-token');
+    settings.render();
+    click('#export-settings');
+
+    click('#backup-generate');
+    await flush();
+
+    expect(settingsBackupMock.buildExportPayload).toHaveBeenCalledWith(false);
+    const img = container.querySelector<HTMLImageElement>('#backup-panel img.setup-qr');
+    expect(img).not.toBeNull();
+    expect(img!.src.startsWith('data:image/')).toBe(true);
+  });
+
+  it('passes true to buildExportPayload once the password toggle is turned on', async () => {
+    setupMock.getInfo.mockResolvedValue({
+      ip: '192.168.1.2',
+      port: 8890,
+      setupUrl: 'http://192.168.1.2:8890/setup?token=abc123',
+      manualUrl: 'http://192.168.1.2:8890',
+      pairingCode: '1234',
+    });
+    backupClientMock.stageExport.mockResolvedValueOnce('export-token');
+    settings.render();
+    click('#export-settings');
+    click('#backup-password-toggle');
+
+    click('#backup-generate');
+    await flush();
+
+    expect(settingsBackupMock.buildExportPayload).toHaveBeenCalledWith(true);
+  });
+
+  it('shows an error state when the service is unreachable for export', async () => {
+    setupMock.getInfo.mockResolvedValue(null);
+    settings.render();
+    click('#export-settings');
+    click('#backup-generate');
+    await flush();
+    expect(container.querySelector('#backup-panel')!.textContent)
+      .toContain('Unable to reach the phone-connection service. Try again.');
+  });
+
+  it('Import Settings opens a QR pointing at the setup page with the import token', async () => {
+    setupMock.getInfo.mockResolvedValue({
+      ip: '192.168.1.2',
+      port: 8890,
+      setupUrl: 'http://192.168.1.2:8890/setup?token=abc123',
+      manualUrl: 'http://192.168.1.2:8890',
+      pairingCode: '1234',
+    });
+    backupClientMock.openImportWindow.mockResolvedValueOnce('import-token');
+    settings.render();
+
+    click('#import-settings');
+    await flush();
+
+    const img = container.querySelector<HTMLImageElement>('#backup-panel img.setup-qr');
+    expect(img).not.toBeNull();
+    expect(img!.alt).toContain('backup=import-token');
+    expect(img!.alt).toContain('token=abc123');
+  });
+
+  it('confirms before applying a phone-submitted backup', async () => {
+    backupClientMock.fetchPendingImport.mockResolvedValueOnce('{"schemaVersion":1}');
+    const payload = {
+      schemaVersion: 1,
+      exportedAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '1.0.0',
+      includesPasswords: true,
+      localStorage: {},
+      userData: {},
+    };
+    settingsBackupMock.validateImportPayload.mockReturnValueOnce({
+      ok: true,
+      payload,
+      appVersionNewer: false,
+    });
+    settings.render();
+
+    await settings.handleBackupImportReady();
+
+    expect(document.querySelector('.confirmation-title')?.textContent).toBe('Restore this backup?');
+    expect(settingsBackupMock.applyImportPayload).not.toHaveBeenCalled();
+
+    settings.handleAction('left');
+    settings.handleAction('select');
+    await vi.waitFor(() => {
+      expect(settingsBackupMock.applyImportPayload).toHaveBeenCalledWith(payload);
+    });
+    expect(backupClientMock.clearPendingImport).toHaveBeenCalled();
+  });
+
+  it('clears the pending import and does not apply anything when cancelled', async () => {
+    backupClientMock.fetchPendingImport.mockResolvedValueOnce('{"schemaVersion":1}');
+    settingsBackupMock.validateImportPayload.mockReturnValueOnce({
+      ok: true,
+      payload: {
+        schemaVersion: 1, exportedAt: '2026-01-01T00:00:00.000Z', appVersion: '1.0.0',
+        includesPasswords: false, localStorage: {}, userData: {},
+      },
+      appVersionNewer: false,
+    });
+    settings.render();
+
+    await settings.handleBackupImportReady();
+    settings.handleAction('right');
+    settings.handleAction('select');
+    await flush();
+
+    expect(settingsBackupMock.applyImportPayload).not.toHaveBeenCalled();
+    expect(backupClientMock.clearPendingImport).toHaveBeenCalled();
+  });
+
+  it('rejects a backup made by a schema version this build does not understand', async () => {
+    backupClientMock.fetchPendingImport.mockResolvedValueOnce('{"schemaVersion":99}');
+    settingsBackupMock.validateImportPayload.mockReturnValueOnce({ ok: false, reason: 'schema' });
+    settings.render();
+
+    await settings.handleBackupImportReady();
+
+    expect(toastMock.showToast).toHaveBeenCalledWith(
+      'That backup was made by a newer app version and cannot be read by this one. Update the app first.',
+    );
+    expect(backupClientMock.clearPendingImport).toHaveBeenCalled();
+    expect(document.querySelector('.confirmation-title')).toBeNull();
   });
 });

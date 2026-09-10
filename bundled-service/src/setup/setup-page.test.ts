@@ -318,4 +318,60 @@ describe('setup page forms', () => {
     expect(password.value).toBe('********');
     dom.window.close();
   });
+
+  it('shows only the restore-upload card for a ?backup= link, not the full setup form', () => {
+    const dom = new JSDOM(PAGE_HTML, {
+      runScripts: 'dangerously',
+      url: 'http://host/setup?token=abc123&backup=restore-tok',
+      beforeParse(window) {
+        Object.defineProperty(window.navigator, 'languages', { value: ['en'] });
+        window.fetch = vi.fn(() => Promise.resolve(response([]))) as unknown as typeof window.fetch;
+      },
+    });
+
+    expect(dom.window.document.querySelector<HTMLElement>('#pair-card')!.hidden).toBe(true);
+    expect(dom.window.document.querySelector<HTMLElement>('#backup-card')!.hidden).toBe(false);
+    expect(dom.window.document.querySelector<HTMLElement>('#setup-card')!.hidden).toBe(true);
+    expect(dom.window.document.querySelector('#backup-card .title')!.textContent)
+      .toBe('Restore settings');
+    dom.window.close();
+  });
+
+  it('posts the chosen file to /backup-import with the restore token, not the setup token', async () => {
+    let sentUrl = '';
+    let sentBody: unknown;
+    class FakeXhr {
+      upload = { onprogress: null };
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      status = 200;
+      responseText = JSON.stringify({ accepted: true });
+      open(_method: string, url: string): void { sentUrl = url; }
+      setRequestHeader(): void {}
+      send(body: unknown): void { sentBody = body; this.onload?.(); }
+    }
+    const dom = new JSDOM(PAGE_HTML, {
+      runScripts: 'dangerously',
+      url: 'http://host/setup?token=abc123&backup=restore-tok',
+      beforeParse(window) {
+        Object.defineProperty(window.navigator, 'languages', { value: ['en'] });
+        window.fetch = vi.fn(() => Promise.resolve(response([]))) as unknown as typeof window.fetch;
+        window.XMLHttpRequest = FakeXhr as unknown as typeof window.XMLHttpRequest;
+      },
+    });
+
+    const input = dom.window.document.querySelector<HTMLInputElement>('#backup-file')!;
+    const file = new dom.window.File(['{"schemaVersion":1}'], 'iptv-settings.json', {
+      type: 'application/json',
+    });
+    Object.defineProperty(input, 'files', { value: [file] });
+    input.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(sentUrl).toBe('/backup-import?token=restore-tok');
+    expect(sentBody).toBe(file);
+    expect(dom.window.document.querySelector('#backup-status')!.textContent)
+      .toBe('Sent. Check the TV to finish restoring.');
+    dom.window.close();
+  });
 });
