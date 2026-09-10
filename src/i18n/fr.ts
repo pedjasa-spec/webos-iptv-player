@@ -164,6 +164,8 @@ export const FR_MESSAGES = {
   'player.reconnecting': 'Reconnexion…',
   'player.retryingCatchup': 'Nouvelle tentative de rattrapage…',
   'player.streamError': 'Erreur de lecture — essai de la chaîne suivante…',
+  'player.startupRetrying': 'Nouvelle tentative ({attempt}/{total})…',
+  'player.startupFailed': 'Impossible de charger cette chaîne.',
   'player.resyncing': 'Resynchronisation…',
   'player.switchingAudio': 'Passage à la piste audio {name}',
   'player.subtitlesTrack': 'Sous-titres : {name}',

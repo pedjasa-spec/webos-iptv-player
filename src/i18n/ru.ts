@@ -170,6 +170,8 @@ export const RU_MESSAGES = {
   'player.reconnecting': 'Повторное подключение…',
   'player.retryingCatchup': 'Повторная загрузка из архива…',
   'player.streamError': 'Ошибка воспроизведения — переход к следующему каналу…',
+  'player.startupRetrying': 'Повторная попытка ({attempt}/{total})…',
+  'player.startupFailed': 'Не удалось загрузить этот канал.',
   'player.resyncing': 'Синхронизация…',
   'player.switchingAudio': 'Переключение на аудиодорожку {name}',
   'player.subtitlesTrack': 'Субтитры: {name}',

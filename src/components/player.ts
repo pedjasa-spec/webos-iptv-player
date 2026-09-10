@@ -93,6 +93,12 @@ export class Player {
   private stallWatchdog: StallWatchdog;
   private startupWatchdog: StartupWatchdog;
   private startupPending = false;
+  // A live channel that never starts at all (not one that stalls after
+  // starting — that's StallWatchdog) gets re-tuned in place a bounded number
+  // of times, unlike a stall, this does not escalate to the next channel:
+  // the user picked this channel, so give up ON it rather than leave it.
+  private startupRetryCount = 0;
+  private startupRetryTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(
     container: HTMLElement,
     onBack: () => void,
@@ -229,6 +235,10 @@ export class Player {
     // can pause while the spinner is up).
     el.addEventListener('loadeddata', () => {
       this.startupPending = false;
+      this.startupRetryCount = 0;
+      // The retry loop stops the stall watchdog for a channel that never
+      // produced a frame at all — restart it now that one finally has.
+      if (isWebOS) this.stallWatchdog.start();
       if (this.catchupInfo) this.catchupVariantConfirmed = true;
     });
     // Intrinsic size changes mid-stream (ABR up/down-switch) so the OSD pills
@@ -398,6 +408,11 @@ export class Player {
       clearTimeout(this.errorAdvanceTimer);
       this.errorAdvanceTimer = null;
     }
+    if (this.startupRetryTimer !== null) {
+      clearTimeout(this.startupRetryTimer);
+      this.startupRetryTimer = null;
+    }
+    this.startupRetryCount = 0;
     this.playbackGeneration++;
     this.healthStartedAt = Date.now();
     this.liveHistoryGeneration = -1;
@@ -773,11 +788,14 @@ export class Player {
   }
 
   /**
-   * A stream that never produced a frame. `unsupported` means the element
-   * rejected every source it was offered — a reload would re-offer the same one,
-   * so surface it. A `timeout` on live/catch-up belongs to the stall watchdog,
-   * whose in-place reload can still recover a transient failure; record it and
-   * leave that recovery alone.
+   * A stream that never produced a frame. A `timeout` on catch-up still
+   * belongs to the stall watchdog, whose in-place reload can recover a
+   * transient failure; record it and leave that recovery alone. For a plain
+   * live channel (no catch-up, no VOD) both failures instead go through the
+   * bounded re-tune loop below: `unsupported` skips straight to giving up —
+   * the element rejected every source it was offered, and a reload would
+   * just re-offer the exact same one — while `timeout` (ambiguous: still
+   * loading, could be a transient provider hiccup) gets retried.
    */
   private onStartupFailure(
     failure: StartupFailure,
@@ -790,7 +808,7 @@ export class Player {
     // A source rejected on its declared type never becomes currentSrc.
     const url = v?.currentSrc || source?.getAttribute('src') ||
       this.vod?.url || this.currentChannel?.url || '';
-    const deferred = failure === 'timeout' && !this.vod;
+    const deferred = failure === 'timeout' && !!this.catchupInfo;
     const detail = [
       `reason=${failure}`,
       `handled=${deferred ? 'deferred' : 'error'}`,
@@ -809,7 +827,41 @@ export class Player {
     log.error('Stream never started', 'event=playback.startup.failed',
       this.playbackLabel(), ...detail);
     this.startupPending = false;
+    if (!this.vod && !this.catchupInfo && this.currentChannel) {
+      this.stallWatchdog.stop();
+      if (failure === 'unsupported') this.giveUpOnStartup();
+      else this.retryStartupOrGiveUp();
+      return;
+    }
     this.onError();
+  }
+
+  // Bounded re-tune loop for a plain live channel that never produced a
+  // frame — unlike a stall (StallWatchdog), this never escalates to the next
+  // channel: the user picked this one, so give up ON it rather than leave it.
+  private retryStartupOrGiveUp(): void {
+    if (this.startupRetryCount >= CONFIG.PLAYER.STARTUP_MAX_RETRIES) {
+      this.giveUpOnStartup();
+      return;
+    }
+    this.startupRetryCount++;
+    const generation = this.playbackGeneration;
+    this.osd.updateMessage(t('player.startupRetrying', {
+      attempt: this.startupRetryCount,
+      total: CONFIG.PLAYER.STARTUP_MAX_RETRIES,
+    }));
+    this.startupRetryTimer = setTimeout(() => {
+      this.startupRetryTimer = null;
+      if (generation !== this.playbackGeneration) return;
+      this.reloadCurrentStream();
+    }, CONFIG.PLAYER.STARTUP_RETRY_DELAY_MS);
+  }
+
+  private giveUpOnStartup(): void {
+    this.markLiveUnavailable('startup_exhausted');
+    log.error('Stream failed to start', 'event=playback.startup.exhausted',
+      this.playbackLabel(), `attempts=${String(this.startupRetryCount)}`);
+    this.osd.updateMessage(t('player.startupFailed'));
   }
 
   private applyPipelineManifest(manifest: PipelineManifest): void {

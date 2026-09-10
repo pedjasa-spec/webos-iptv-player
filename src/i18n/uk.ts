@@ -170,6 +170,8 @@ export const UK_MESSAGES = {
   'player.reconnecting': 'Повторне підключення…',
   'player.retryingCatchup': 'Повторне завантаження з архіву…',
   'player.streamError': 'Помилка відтворення — перехід до наступного каналу…',
+  'player.startupRetrying': 'Повторна спроба ({attempt}/{total})…',
+  'player.startupFailed': 'Не вдалося завантажити цей канал.',
   'player.resyncing': 'Синхронізація…',
   'player.switchingAudio': 'Перехід на аудіодоріжку {name}',
   'player.subtitlesTrack': 'Субтитри: {name}',

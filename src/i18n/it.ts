@@ -164,6 +164,8 @@ export const IT_MESSAGES = {
   'player.reconnecting': 'Riconnessione…',
   'player.retryingCatchup': 'Nuovo tentativo di replay…',
   'player.streamError': 'Errore di riproduzione — tentativo con il canale successivo…',
+  'player.startupRetrying': 'Nuovo tentativo ({attempt}/{total})…',
+  'player.startupFailed': 'Impossibile caricare questo canale.',
   'player.resyncing': 'Risincronizzazione…',
   'player.switchingAudio': 'Passaggio alla traccia audio {name}',
   'player.subtitlesTrack': 'Sottotitoli: {name}',

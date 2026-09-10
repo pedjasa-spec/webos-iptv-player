@@ -40,6 +40,8 @@ export const CONFIG = {
     STALL_MAX_RELOADS: 2,       // in-place reloads before escalating to the next channel
     STARTUP_POLL_MS: 500,       // startup watchdog: readyState/networkState poll interval
     STARTUP_TIMEOUT: 15000,     // ms a stream may load without a frame before it counts as failed
+    STARTUP_MAX_RETRIES: 5,     // live channel that never starts: automatic re-tune attempts before giving up
+    STARTUP_RETRY_DELAY_MS: 2500, // pause between those attempts
     DVR_MIN_WINDOW: 10,         // live DVR: a seekable window must exceed this (s) to offer timeshift
     DVR_LIVE_EDGE: 10,          // within this many seconds of the window end counts as "at live"
     DVR_GO_LIVE_PAD: 3,         // Go-to-Live seeks to seekable.end minus this (s), avoiding a stall at the edge

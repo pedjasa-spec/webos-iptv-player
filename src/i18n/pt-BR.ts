@@ -164,6 +164,8 @@ export const PT_BR_MESSAGES = {
   'player.reconnecting': 'Reconectando…',
   'player.retryingCatchup': 'Tentando a reprise novamente…',
   'player.streamError': 'Erro de reprodução — tentando o próximo canal…',
+  'player.startupRetrying': 'Tentando novamente ({attempt}/{total})…',
+  'player.startupFailed': 'Não foi possível carregar este canal.',
   'player.resyncing': 'Ressincronizando…',
   'player.switchingAudio': 'Alterando a faixa de áudio para {name}',
   'player.subtitlesTrack': 'Legendas: {name}',

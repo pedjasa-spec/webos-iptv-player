@@ -164,6 +164,8 @@ export const DE_MESSAGES = {
   'player.reconnecting': 'Verbindung wird wiederhergestellt…',
   'player.retryingCatchup': 'Catch-up wird erneut versucht…',
   'player.streamError': 'Wiedergabefehler — nächster Sender wird versucht…',
+  'player.startupRetrying': 'Erneuter Versuch ({attempt}/{total})…',
+  'player.startupFailed': 'Dieser Sender kann nicht geladen werden.',
   'player.resyncing': 'Wird synchronisiert…',
   'player.switchingAudio': 'Audiospur wird zu {name} gewechselt',
   'player.subtitlesTrack': 'Untertitel: {name}',

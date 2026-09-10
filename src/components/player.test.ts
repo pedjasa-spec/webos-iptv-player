@@ -569,18 +569,56 @@ describe('Player live playback', () => {
     expect(playlistMock.getByIndex).not.toHaveBeenCalled();
   });
 
-  it('leaves a live stream that never starts to the stall watchdog', async () => {
-    playlistMock.channels = [{}, {}];
-    Object.assign(video, { readyState: 0, networkState: 2 });
-    player.play(0);
+  it('retries a live channel that never starts, then gives up without advancing', async () => {
+    HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+    HTMLMediaElement.prototype.pause = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
+    const v = document.createElement('video');
+    container.appendChild(v);
+    player.init(v);
+
+    player.play(0); // live
     await flush();
-    video.dispatchEvent(new Event('loadstart'));
     playlistMock.getByIndex.mockClear();
     healthMock.recordPlaybackFailure.mockClear();
+    container.querySelector('video')!.dispatchEvent(new Event('loadstart'));
 
-    vi.advanceTimersByTime(CONFIG.PLAYER.STARTUP_TIMEOUT * 2);
+    for (let attempt = 1; attempt <= CONFIG.PLAYER.STARTUP_MAX_RETRIES; attempt++) {
+      vi.advanceTimersByTime(CONFIG.PLAYER.STARTUP_TIMEOUT);
+      const osd = container.querySelector('#player-osd')!;
+      expect(osd.textContent).toContain(`${String(attempt)}/${String(CONFIG.PLAYER.STARTUP_MAX_RETRIES)}`);
+      expect(healthMock.recordPlaybackFailure).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(CONFIG.PLAYER.STARTUP_RETRY_DELAY_MS);
+      await flush();
+      container.querySelector('video')!.dispatchEvent(new Event('loadstart'));
+    }
 
+    vi.advanceTimersByTime(CONFIG.PLAYER.STARTUP_TIMEOUT);
+
+    expect(healthMock.recordPlaybackFailure).toHaveBeenCalledWith(CHANNEL, 'startup_exhausted');
+    expect(container.querySelector('#player-osd')!.textContent).toContain('Unable to load');
+    // Stays on the channel it was already showing — never asked for another.
     expect(playlistMock.getByIndex).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending startup retry on stop (Back)', async () => {
+    HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+    HTMLMediaElement.prototype.pause = vi.fn();
+    HTMLMediaElement.prototype.load = vi.fn();
+    const v = document.createElement('video');
+    container.appendChild(v);
+    player.init(v);
+
+    player.play(0); // live
+    await flush();
+    container.querySelector('video')!.dispatchEvent(new Event('loadstart'));
+    vi.advanceTimersByTime(CONFIG.PLAYER.STARTUP_TIMEOUT); // first failure schedules a retry
+
+    player.stop();
+    healthMock.recordPlaybackFailure.mockClear();
+    vi.advanceTimersByTime(CONFIG.PLAYER.STARTUP_RETRY_DELAY_MS * 10);
+
+    // The scheduled reload never fires once stopped.
     expect(healthMock.recordPlaybackFailure).not.toHaveBeenCalled();
   });
 

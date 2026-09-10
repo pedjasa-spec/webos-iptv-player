@@ -161,6 +161,8 @@ export const ZH_CN_MESSAGES = {
   'player.reconnecting': '正在重新连接…',
   'player.retryingCatchup': '正在重试回看…',
   'player.streamError': '播放出错，正在尝试下一个频道…',
+  'player.startupRetrying': '正在重试（{attempt}/{total}）…',
+  'player.startupFailed': '无法加载此频道。',
   'player.resyncing': '正在重新同步…',
   'player.switchingAudio': '正在切换到音轨 {name}',
   'player.subtitlesTrack': '字幕：{name}',
