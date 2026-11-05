@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import type { PlaylistEntry, TzMode } from '../types';
+import type { ChannelCycleMode, PlaylistEntry, TzMode } from '../types';
 import type { LocalePreference } from '../i18n';
 import type { OverlayStyle, TextSize } from '../config/themes';
 import type { OnlineSubtitleConfig } from './subtitle-search/types';
@@ -30,6 +30,8 @@ export interface SettingsBackupLocalStorage {
   iptv_epg_tz_offset: number | null;
   iptv_epg_offsets: Record<string, number>;
   iptv_online_subtitles: OnlineSubtitleConfig;
+  // Absent from backups made before channel cycling became a setting.
+  iptv_channel_cycle_mode?: ChannelCycleMode;
 }
 
 export interface SettingsBackupPayload {
@@ -58,6 +60,7 @@ function snapshotLocalStorage(): SettingsBackupLocalStorage {
     iptv_epg_tz_offset: StorageService.getEpgTzOffset(),
     iptv_epg_offsets: StorageService.getEpgOffsets(),
     iptv_online_subtitles: StorageService.getOnlineSubtitleConfig(),
+    iptv_channel_cycle_mode: StorageService.getChannelCycleMode(),
   };
 }
 
@@ -154,6 +157,7 @@ function writeLocalStorage(ls: SettingsBackupLocalStorage): void {
   if (ls.iptv_epg_tz_offset !== null) StorageService.setEpgTzOffset(ls.iptv_epg_tz_offset);
   StorageService.setEpgOffsets(ls.iptv_epg_offsets);
   StorageService.setOnlineSubtitleConfig(ls.iptv_online_subtitles);
+  if (ls.iptv_channel_cycle_mode) StorageService.setChannelCycleMode(ls.iptv_channel_cycle_mode);
 }
 
 /**

@@ -146,6 +146,20 @@ describe('settings-backup', () => {
       ]);
     });
 
+    it('restores the channel cycle mode, and keeps it for a backup made before the setting', async () => {
+      StorageService.setChannelCycleMode('global');
+      const payload = await buildExportPayload(false);
+      expect(payload.localStorage.iptv_channel_cycle_mode).toBe('global');
+
+      StorageService.setChannelCycleMode('active');
+      await applyImportPayload(payload);
+      expect(StorageService.getChannelCycleMode()).toBe('global');
+
+      delete payload.localStorage.iptv_channel_cycle_mode;
+      await applyImportPayload(payload);
+      expect(StorageService.getChannelCycleMode()).toBe('global');
+    });
+
     it('rolls back both storage layers if the localStorage half fails partway through', async () => {
       StorageService.toggleFavorite('kept-channel');
       StorageService.setTheme('kept-theme');
