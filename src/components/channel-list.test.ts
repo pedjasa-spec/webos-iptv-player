@@ -730,8 +730,10 @@ describe('ChannelList interaction', () => {
 
   it('keeps focus on a group favorited far outside the rendered window', () => {
     const original = playlistMock.getGroupsForPlaylist;
+    // Enough groups to put the last one well past the ~38-row rendered window;
+    // each step re-renders the list, so more only slows the test down.
     playlistMock.getGroupsForPlaylist = () =>
-      Array.from({ length: 200 }, (_, index) => `Group ${String(index)}`);
+      Array.from({ length: 60 }, (_, index) => `Group ${String(index)}`);
     playlistMock.groupsRevision++;
     try {
       list.render();
@@ -747,13 +749,13 @@ describe('ChannelList interaction', () => {
       // Walk to the last group via real down-navigation (exercises moveVirtualFocus's
       // own ensureVisible, not just the fix under test) so it starts off far outside
       // whatever window favoriting a low group would otherwise leave rendered.
-      for (let i = 0; i < 199; i++) list.handleAction('down');
-      expect(container.querySelector<HTMLElement>('.focused')?.dataset.group).toBe('source:Group 199');
+      for (let i = 0; i < 59; i++) list.handleAction('down');
+      expect(container.querySelector<HTMLElement>('.focused')?.dataset.group).toBe('source:Group 59');
 
       list.handleAction('green');
-      expect(ChannelCustomizationService.isGroupFavorite('Group 199')).toBe(true);
+      expect(ChannelCustomizationService.isGroupFavorite('Group 59')).toBe(true);
       const focused = container.querySelector<HTMLElement>('.focused')!;
-      expect(focused.dataset.group).toBe('source:Group 199');
+      expect(focused.dataset.group).toBe('source:Group 59');
       expect(focused.querySelector('.group-favorite-star')).not.toBeNull();
     } finally {
       playlistMock.getGroupsForPlaylist = original;
