@@ -1,3 +1,23 @@
+> [!NOTE]
+> **This is a fork of [lennylxx/webos-iptv-player](https://github.com/lennylxx/webos-iptv-player).**
+> It adds the following on top of the original:
+>
+> - **Xtream category filter**: load only the live categories you choose,
+>   which keeps large provider lists fast and within the TV's memory.
+> - **Channel folders**: your own folders for channels. A channel stays in
+>   its original group and also appears in its folder.
+> - **Starred groups and categories**: star a group or category to keep it
+>   at the top in Live, Movies, and Series.
+> - **Category sidebar in Movies and Series**, like the Live channel list.
+> - **Settings backup and restore**: export and import settings over the
+>   local network by scanning a QR code with your phone.
+> - **Long-press OK menu** for Magic Remotes without color buttons.
+> - **Automatic retry** when a live channel fails to start.
+> - **Channel up/down stays in the group or folder** the channel was
+>   opened from.
+>
+> The rest of this README describes the original project.
+
 <div align="center">
   <img src="assets/icon.svg" alt="webOS IPTV Player icon">
   <h1>webOS IPTV Player</h1>
