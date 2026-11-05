@@ -59,6 +59,12 @@ describe('StorageService', () => {
     });
   });
 
+  it('defaults channel cycling to Active and round-trips Global', () => {
+    expect(StorageService.getChannelCycleMode()).toBe('active');
+    StorageService.setChannelCycleMode('global');
+    expect(StorageService.getChannelCycleMode()).toBe('global');
+  });
+
   it('defaults the EPG url to an empty string and round-trips it', () => {
     expect(StorageService.getEpgUrl()).toBe('');
     StorageService.setEpgUrl('http://epg/guide.xml');

@@ -14,7 +14,7 @@
 > - **Long-press OK menu** for Magic Remotes without color buttons.
 > - **Automatic retry** when a live channel fails to start.
 > - **Channel up/down stays in the group or folder** the channel was
->   opened from.
+>   opened from, or cycles the full list (Settings > Playback).
 >
 > The rest of this README describes the original project.
 

@@ -766,11 +766,11 @@ export const StorageService = {
     set('auto_play', val);
   },
 
-  // 'global' = channel_up/channel_down cycles the entire channel list
-  // (default, matches pre-scoping behavior), 'active' = stays within the
+  // 'global' = channel_up/channel_down cycles the entire channel list,
+  // 'active' (this fork's default) = stays within the
   // group/playlist/Favorites a channel was tuned from.
   getChannelCycleMode(): ChannelCycleMode {
-    return get<ChannelCycleMode>('channel_cycle_mode', 'global');
+    return get<ChannelCycleMode>('channel_cycle_mode', 'active');
   },
   setChannelCycleMode(mode: ChannelCycleMode): void {
     set('channel_cycle_mode', mode);

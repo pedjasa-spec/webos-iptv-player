@@ -1199,9 +1199,9 @@ export class Player {
     this.globalChannelStep(-1);
   }
 
-  // The settings.channelCycleMode gate: scoping only applies when the user
-  // opted into 'active' — 'global' (the default) preserves the pre-scoping
-  // full-list behavior even though currentScope is still tracked.
+  // The settings.channelCycleMode gate: scoping only applies in 'active'
+  // (the default); 'global' keeps the full-list behavior even though
+  // currentScope is still tracked.
   private shouldUseScope(): boolean {
     return !!this.currentScope && StorageService.getChannelCycleMode() === 'active';
   }

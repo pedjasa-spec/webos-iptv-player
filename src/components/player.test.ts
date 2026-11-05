@@ -1786,7 +1786,7 @@ describe('Player channel_up/channel_down view scope', () => {
     expect(player.getCurrentIndex()).toBe(2);
   });
 
-  it('ignores an active launch scope when settings.channelCycleMode is global (the default)', () => {
+  it('ignores an active launch scope when settings.channelCycleMode is global', () => {
     vi.mocked(StorageService.getChannelCycleMode).mockReturnValue('global');
     player.play(0, undefined, { group: 'builtin:favorites' }); // FAV_A, scope tracked either way
     player.channelUp();

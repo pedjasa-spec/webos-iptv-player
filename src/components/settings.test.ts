@@ -32,7 +32,7 @@ const {
     overlayStyle: 'dark' as string,
     textSize: '100' as string,
     tzMode: 'device' as TzMode,
-    channelCycleMode: 'global' as ChannelCycleMode,
+    channelCycleMode: 'active' as ChannelCycleMode,
     showHidden: false,
     tzOffset: null as number | null,
     epgOffsets: {} as Record<string, number>,
@@ -1112,13 +1112,13 @@ describe('Settings.save', () => {
     expect(storageMock.setTzMode).toHaveBeenCalledWith('feed');
   });
 
-  it('selecting Active persists the channel cycle mode, defaulting to Global', () => {
+  it('selecting Global persists the channel cycle mode, defaulting to Active', () => {
     const activeMode = () => container.querySelector('#channel-cycle-mode .toggle-option.active')!.getAttribute('data-value');
-    expect(activeMode()).toBe('global'); // default — preserves pre-scoping behavior
-    click('#channel-cycle-mode [data-value="active"]');
     expect(activeMode()).toBe('active');
+    click('#channel-cycle-mode [data-value="global"]');
+    expect(activeMode()).toBe('global');
     click('#save-settings');
-    expect(storageMock.setChannelCycleMode).toHaveBeenCalledWith('active');
+    expect(storageMock.setChannelCycleMode).toHaveBeenCalledWith('global');
   });
 
   it('saves online subtitle credentials', () => {

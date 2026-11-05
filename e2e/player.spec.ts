@@ -326,11 +326,7 @@ test('player sidebar falls back to All after playback leaves the retained group'
   await expect(sidebar.locator('.sidebar-ch-item.focused')).toContainText('Alpha Movies');
 });
 
-test('channel_up/channel_down stay within the group a channel was tuned from, when Active is on', async ({ page }) => {
-  // Scoping is opt-in (settings.channelCycleMode), defaulting to Global.
-  await page.addInitScript(() => {
-    localStorage.setItem('iptv_channel_cycle_mode', JSON.stringify('active'));
-  });
+test('channel_up/channel_down stay within the group a channel was tuned from by default', async ({ page }) => {
   await gotoGroupedPlayer(page);
   const sidebar = page.locator('#player-sidebar');
 
@@ -355,7 +351,10 @@ test('channel_up/channel_down stay within the group a channel was tuned from, wh
   await expect(page.locator('.osd-channel-name')).toHaveText('Alpha News');
 });
 
-test('channel_up/channel_down cycle the full list by default, even when tuned from a group', async ({ page }) => {
+test('channel_up/channel_down cycle the full list when Global is on, even when tuned from a group', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('iptv_channel_cycle_mode', JSON.stringify('global'));
+  });
   await gotoGroupedPlayer(page);
   const sidebar = page.locator('#player-sidebar');
 
@@ -366,12 +365,11 @@ test('channel_up/channel_down cycle the full list by default, even when tuned fr
   await page.keyboard.press('ArrowDown'); // News
   await page.keyboard.press('Enter');
   await expect(sidebar.locator('.sidebar-ch-item.focused')).toContainText('Beta News');
-  await page.keyboard.press('Enter'); // Tune Beta News (default: Global) and close.
+  await page.keyboard.press('Enter'); // Tune Beta News and close.
   await expect(page.locator('.osd-channel-name')).toHaveText('Beta News');
 
-  // settings.channelCycleMode defaults to Global — existing users see no
-  // change: channel_up steps to the next channel in the full list (Alpha
-  // Movies), spilling past News, same as before PR58.
+  // Global: channel_up steps to the next channel in the full list (Alpha
+  // Movies), spilling past News.
   await page.keyboard.press('ArrowUp');
   await expect(page.locator('.osd-channel-name')).toHaveText('Alpha Movies');
 });
