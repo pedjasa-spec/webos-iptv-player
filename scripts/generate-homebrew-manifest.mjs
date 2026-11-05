@@ -13,6 +13,9 @@ if (appInfo.version !== packageInfo.version) {
   );
 }
 
+// GitHub Actions sets GITHUB_REPOSITORY, so a fork's release points at itself.
+const repo = process.env.GITHUB_REPOSITORY || 'lennylxx/webos-iptv-player';
+
 const expectedIpk = `${appInfo.id}_${packageInfo.version}_all.ipk`;
 const ipkPath = resolve(process.argv[2] || expectedIpk);
 const outputPath = resolve(process.argv[3] || `${appInfo.id}.manifest.json`);
@@ -29,8 +32,8 @@ const manifest = {
   type: appInfo.type,
   title: appInfo.title,
   appDescription: appInfo.appDescription,
-  iconUri: 'https://raw.githubusercontent.com/lennylxx/webos-iptv-player/main/assets/icon130.png',
-  sourceUrl: 'https://github.com/lennylxx/webos-iptv-player',
+  iconUri: `https://raw.githubusercontent.com/${repo}/main/assets/icon130.png`,
+  sourceUrl: `https://github.com/${repo}`,
   rootRequired: false,
   ipkUrl: basename(ipkPath),
   ipkHash: {
