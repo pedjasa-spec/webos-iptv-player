@@ -1,5 +1,6 @@
 import type {
   Action,
+  ChannelCycleMode,
   EpgSource,
   NavDirection,
   PlaylistEntry,
@@ -544,6 +545,7 @@ export class Settings {
     this.epgOffsets = { ...this.storedEpgOffsets };
     const epgSources = this.epgSources(epgUrl, allPlaylists);
     const autoPlay = StorageService.getAutoPlay();
+    const channelCycleMode = StorageService.getChannelCycleMode();
     const showHidden = StorageService.getShowHiddenChannels();
     const feedTime = StorageService.getTzMode() === 'feed';
     const tzOffset = StorageService.getEpgTzOffset();
@@ -748,6 +750,14 @@ export class Settings {
                 <div class="settings-item">
                   <div class="settings-item-title">${t('settings.autoPlay')}</div>
                   ${toggleGroup('auto-play', [{ value: 'on', label: t('settings.on') }, { value: 'off', label: t('settings.off') }], autoPlay ? 'on' : 'off')}
+                </div>
+                <div class="settings-item">
+                  <div class="settings-item-title">${t('settings.channelCycleMode')}</div>
+                  ${toggleGroup('channel-cycle-mode', [
+                    { value: 'global', label: t('settings.channelCycleGlobal') },
+                    { value: 'active', label: t('settings.channelCycleActive') },
+                  ], channelCycleMode)}
+                  <div class="settings-item-hint">${t('settings.channelCycleModeHint')}</div>
                 </div>
               </div>
             </div>
@@ -1934,6 +1944,11 @@ export class Settings {
 
     const autoPlayBtn = $('#auto-play .toggle-option.active', this.container);
     if (autoPlayBtn) StorageService.setAutoPlay(autoPlayBtn.dataset.value === 'on');
+
+    const channelCycleBtn = $('#channel-cycle-mode .toggle-option.active', this.container);
+    if (channelCycleBtn?.dataset.value) {
+      StorageService.setChannelCycleMode(channelCycleBtn.dataset.value as ChannelCycleMode);
+    }
 
     this.saveShowHidden();
 
