@@ -16,6 +16,8 @@
 > - **Channel up/down stays in the group or folder** the channel was
 >   opened from, or cycles the full list (Settings > Playback).
 >
+> To install it on an LG TV, see **[INSTALL.md](INSTALL.md)**.
+>
 > The rest of this README describes the original project.
 
 <div align="center">
