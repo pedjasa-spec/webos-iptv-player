@@ -86,6 +86,10 @@ The helper's part is done. The TV no longer needs the phone or computer.
    https://pedjasa-spec.github.io/webos-iptv-player/repo.json
    ```
 
+Watch the spot right after `pedjasa-spec`: it is followed by a **dot**
+(`pedjasa-spec.github.io`), not a dash. This is the easiest place to make
+a mistake.
+
 Check it letter by letter before you confirm. If Homebrew Channel says
 *"An error occured while downloading repository"*, the address has a
 typo.
